@@ -1,0 +1,6 @@
+{
+  "name": "AI Project Production Orchestrator",
+  "description": "A conversational project manager that helps a user turn an idea into a finished build prompt for Google AI Studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
