@@ -275,7 +275,21 @@ Return ONLY valid JSON adhering strictly to this format:
   }
 });
 
-// Helper: Generate structured project continuity response adhering strictly to the Sniper Principle
+// Helper: Check if user input is too vague or unformed to warrant a build prompt yet
+function isTooVagueOrUnderExplored(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  // Vague prompts or explicit discovery requests
+  if (
+    normalized.length < 25 ||
+    /not sure what it is yet|make people's lives easier|don't know what the product is yet|talk it through with me|only tell me to build something once|explore some ideas|any ideas/i.test(normalized) ||
+    (/social media|short videos|dating app|chat app/i.test(normalized) && /worth building|is this worth|should i build|good idea/i.test(normalized))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// Helper: Generate structured project continuity response adhering strictly to the Sniper Principle & Restraint Principle
 function generateContinuityFallbackResponse({
   lastUserMessage,
   currentWorkingPrompt,
@@ -295,11 +309,178 @@ function generateContinuityFallbackResponse({
 }) {
   const projectTitle = project?.identity?.title || activeIdea || "Ongoing Project";
   const ideaTopic = lastUserMessage.length > 50 ? lastUserMessage.substring(0, 50) + "..." : lastUserMessage;
-  
-  // Preserve existing prompt if established, or generate initial draft
-  let workingPromptFallback = currentWorkingPrompt && currentWorkingPrompt.trim().length > 0
-    ? currentWorkingPrompt
-    : `// ========================================================
+  const isVagueOrDiscoveryOnly = !currentWorkingPrompt && isTooVagueOrUnderExplored(lastUserMessage) && !isBuildTrigger;
+
+  let workingPromptFallback = currentWorkingPrompt || "";
+  let responseContent = "";
+  let updatedProjectRequirements = project?.requirements || {
+    purpose: lastUserMessage,
+    architecture: {
+      stack: ["React 19", "TypeScript", "Tailwind CSS"],
+      storage: "Client-side key-value / LocalStorage",
+      pattern: "Single-view SPA",
+    },
+    coreCapabilities: ["Instant record capture", "Live status toggling", "Category filtering", "Export and clipboard actions"],
+    constraintsAndNonGoals: ["No authentication walls", "No multi-step wizards", "No unrequested sidebars"],
+    importantDecisions: ["Single-screen architectural focus", "Offline-friendly client storage"],
+  };
+
+  // 1. Completely Vague Idea or Pure Discovery (Test 8 & Test 10)
+  if (isVagueOrDiscoveryOnly) {
+    workingPromptFallback = ""; // Restraint: No prompt until problem & wedge are established!
+    if (/make people's lives easier|not sure what it is yet/i.test(lastUserMessage)) {
+      responseContent = `I appreciate the openness. The most successful tools start from a concrete friction someone experiences repeatedly, not from a generic ambition to "make lives easier."
+
+Before we write a single line of a build prompt, let's discover the real problem:
+1. **Who specifically is suffering?** Is this for you personally, a specific trade, a small team, or a specific daily chore?
+2. **What is a moment of acute frustration?** What is something you or someone you know had to do this week that felt messy, repetitive, or poorly handled by existing apps?
+
+Tell me about that friction, and we'll investigate whether there's a genuine gap worth building for.`;
+    } else if (/social media|short videos/i.test(lastUserMessage) || /worth building/i.test(lastUserMessage)) {
+      responseContent = `To be completely honest: **No, a generic short-video social media app is not worth building.**
+
+Here is the market reality:
+• **Monopoly dominance:** TikTok, Instagram Reels, and YouTube Shorts have locked up global distribution, creator monetization, and recommendation algorithms. Competing head-on without massive capital is a graveyard.
+• **Where an actual opportunity might exist:** A niche wedge with extreme constraints. For example:
+  - Private, asynchronous video standups for remote engineering teams.
+  - Video critique exchange for music producers or martial arts athletes.
+  - Local apprentice training videos with timestamped feedback.
+
+Unless you have a hyper-specific group or unique interaction mechanic in mind, you will spend weeks building something nobody uses. Do any of those specific wedges resonate, or do you want to explore a different problem entirely?`;
+    } else {
+      responseContent = `I'm completely on board with that approach. We won't jump into building or generate a prompt until we've proven there is a real problem and a distinct gap.
+
+To start:
+1. **What sparked this thought?** What domain, workflow, or frustrating situation has been on your mind?
+2. **What tools are people currently using to solve it?** (Even if it's just spreadsheets, sticky notes, or text threads).
+
+Let's look at what already exists and see where the actual wedge is.`;
+    }
+  }
+  // 2. AI Studio Feedback Loop: Retain established state, target ONLY the broken area
+  else if (currentWorkingPrompt && isAiStudioFeedback && !isBuildTrigger) {
+    responseContent = `I know where we are with this project. Let's address what happened in AI Studio:
+
+I've examined the feedback ("${lastUserMessage}"). Rather than regenerating what already works, I've preserved our established architecture, data structures, and styling, and applied targeted fix directives to the Build Prompt on the right.
+
+Copy the updated specification, paste it into Google AI Studio, and verify the resolved workflow.`;
+
+    if (!workingPromptFallback.includes("// TARGETED FIX / ITERATION DIRECTIVE")) {
+      workingPromptFallback = `// ========================================================
+// TARGETED ITERATION DIRECTIVE FOR GOOGLE AI STUDIO
+// Project: ${projectTitle}
+// Reported Observation: "${lastUserMessage}"
+// ========================================================
+
+${workingPromptFallback}
+
+# TARGETED REFINEMENT & RESOLUTION DIRECTIVE:
+- Address the reported feedback: "${lastUserMessage}".
+- Strict Continuity Constraint: PRESERVE all existing working components, state management, and view structures.
+- Modify ONLY the specific workflow or handler causing this issue.
+- Add robust error boundaries, graceful fallback states, and explicit validation to prevent regressions in AI Studio.`;
+    } else {
+      workingPromptFallback += `\n\n- Additional Fix: Address "${lastUserMessage}". Ensure unaffected features remain intact.`;
+    }
+  }
+  // 3. Significant Architectural Pivot: (e.g. switching from local storage to hosted DB)
+  else if (currentWorkingPrompt && isArchitecturalPivot && !isBuildTrigger) {
+    responseContent = `I've registered the architectural change: transitioning from local browser storage to a hosted cloud database.
+
+Here is how I've updated the project:
+1. **Preserved**: All user flows, visual layouts, schemas, and non-goals remain completely intact.
+2. **Updated**: Replaced local storage with a server-side API proxy layer and cloud database connection.
+3. **Invalidated**: Removed obsolete offline-only constraints to prevent contradictory directives.
+
+The Build Prompt on the right has been updated with this cohesive architecture.`;
+
+    workingPromptFallback = workingPromptFallback.replace(
+      /Backend & Storage: Client-side persistent key-value state \(LocalStorage\) with clean reactive hooks\./g,
+      "Backend & Storage: Hosted Cloud Database (PostgreSQL / Firestore) connected via server-side Express API routes (/api/*) with lazy initialization and secret proxying."
+    );
+    if (!workingPromptFallback.includes("Hosted Cloud Database")) {
+      workingPromptFallback = workingPromptFallback.replace(
+        "# TECHNICAL ARCHITECTURE:",
+        `# TECHNICAL ARCHITECTURE:
+- Data Architecture: Hosted Cloud Database with server-side proxy routes (/api/*). Never expose DB credentials to the browser.`
+      );
+    }
+    updatedProjectRequirements.architecture.storage = "Hosted Cloud Database via Express API proxy";
+  }
+  // 4. Build Trigger
+  else if (isBuildTrigger) {
+    if (!workingPromptFallback) {
+      workingPromptFallback = `// ========================================================
+// GOOGLE AI STUDIO BUILD PROMPT
+// Project: ${ideaTopic}
+// Copy and paste directly into https://ai.studio/build
+// ========================================================
+
+# PROJECT OBJECTIVE:
+Build a focused, single-screen web application solving: "${lastUserMessage}"
+The application must be immediately interactive, with zero unnecessary onboarding barriers.
+
+# TECHNICAL ARCHITECTURE:
+- Platform: React 19 with TypeScript and Tailwind CSS.
+- Layout: Single-view, responsive layout. Strictly avoid multi-page navigation or unrequested sidebar tabs.
+- Backend & Storage: Client-side persistent key-value state (LocalStorage) with clean reactive hooks.
+- Design System: Sophisticated neutral palette, high-contrast typography, clear hierarchy, accessible touch targets (min 44px).
+
+# DATA MODEL & SCHEMA:
+interface ItemRecord {
+  id: string;
+  title: string;
+  category: string;
+  status: "active" | "completed" | "archived";
+  notes?: string;
+  timestamp: string;
+}
+
+# CORE INTERACTION FLOW:
+1. Instant capture input with responsive keyboard handling (Enter to submit).
+2. Clean visual list/grid of items with status toggles and inline editing.
+3. Search and quick filtering across active categories.
+4. Export/copy data functionality with instant visual confirmation.
+
+# NON-GOALS (STRICT ANTI-DRIFT):
+- Do NOT build authentication modals, user login screens, or billing forms unless explicitly requested.
+- Do NOT add complex multi-step wizards or unrequested sidebars.
+- Focus strictly on making the primary workflow delightful and reliable.`;
+    }
+
+    responseContent = `I've synthesized our project into the finalized **Build Prompt** on the right.
+
+It establishes:
+• Single-screen architecture with instant tactile feedback
+• Strict TypeScript data models and validation contracts
+• Explicit non-goals to prevent scope creep in AI Studio
+• Production-ready styling and resilient error handling
+
+You can copy the prompt using **Copy Prompt for AI Studio** on the right, open **Google AI Studio**, and paste it in to build your application.`;
+  }
+  // 5. Incremental Refinement (e.g. dark mode, csv export)
+  else if (currentWorkingPrompt && !isBuildTrigger) {
+    if (/dark\s*mode/i.test(lastUserMessage)) {
+      workingPromptFallback = workingPromptFallback.replace(
+        "Sophisticated neutral palette",
+        "Sleek dark theme with dark stone neutrals (#1c1917) and warm accents"
+      );
+      responseContent = `I know where we are with this project. I've updated the Build Prompt to specify a refined dark theme while preserving our established schemas and core workflows.`;
+    } else if (/csv|export/i.test(lastUserMessage)) {
+      if (!workingPromptFallback.includes("CSV")) {
+        workingPromptFallback = workingPromptFallback.replace(
+          "4. Export/copy data functionality with instant visual confirmation.",
+          "4. Dedicated CSV file export and clipboard copy functionality with instant visual confirmation."
+        );
+      }
+      responseContent = `I know where we are with this project. I've incorporated dedicated CSV export functionality into the Build Prompt, keeping all existing architecture and decisions intact.`;
+    } else {
+      responseContent = `I know where we are with this project. I've incorporated your feedback into the Build Prompt while preserving everything already established. What do you think?`;
+    }
+  }
+  // 6. Concrete Idea Exploration (Well-scoped business/tool problems like electrician or music stems)
+  else {
+    workingPromptFallback = `// ========================================================
 // GOOGLE AI STUDIO BUILD PROMPT
 // Project: ${ideaTopic}
 // Copy and paste directly into https://ai.studio/build
@@ -336,103 +517,6 @@ interface ItemRecord {
 - Do NOT add complex multi-step wizards or unrequested sidebars.
 - Focus strictly on making the primary workflow delightful and reliable.`;
 
-  let responseContent = "";
-  let updatedProjectRequirements = project?.requirements || {
-    purpose: lastUserMessage,
-    architecture: {
-      stack: ["React 19", "TypeScript", "Tailwind CSS"],
-      storage: "Client-side key-value / LocalStorage",
-      pattern: "Single-view SPA",
-    },
-    coreCapabilities: ["Instant record capture", "Live status toggling", "Category filtering", "Export and clipboard actions"],
-    constraintsAndNonGoals: ["No authentication walls", "No multi-step wizards", "No unrequested sidebars"],
-    importantDecisions: ["Single-screen architectural focus", "Offline-friendly client storage"],
-  };
-
-  // 1. AI Studio Feedback Loop: Retain established state, target ONLY the broken area
-  if (currentWorkingPrompt && isAiStudioFeedback && !isBuildTrigger) {
-    responseContent = `I know where we are with this project. Let's address what happened in AI Studio:
-
-I've examined the feedback ("${lastUserMessage}"). Rather than regenerating what already works, I've preserved our established architecture, data structures, and styling, and applied targeted fix directives to the Build Prompt on the right.
-
-Copy the updated specification, paste it into Google AI Studio, and verify the resolved workflow.`;
-
-    if (!workingPromptFallback.includes("// TARGETED FIX / ITERATION DIRECTIVE")) {
-      workingPromptFallback = `// ========================================================
-// TARGETED ITERATION DIRECTIVE FOR GOOGLE AI STUDIO
-// Project: ${projectTitle}
-// Reported Observation: "${lastUserMessage}"
-// ========================================================
-
-${workingPromptFallback}
-
-# TARGETED REFINEMENT & RESOLUTION DIRECTIVE:
-- Address the reported feedback: "${lastUserMessage}".
-- Strict Continuity Constraint: PRESERVE all existing working components, state management, and view structures.
-- Modify ONLY the specific workflow or handler causing this issue.
-- Add robust error boundaries, graceful fallback states, and explicit validation to prevent regressions in AI Studio.`;
-    } else {
-      workingPromptFallback += `\n\n- Additional Fix: Address "${lastUserMessage}". Ensure unaffected features remain intact.`;
-    }
-  }
-  // 2. Significant Architectural Pivot: (e.g. switching from local storage to hosted DB)
-  else if (currentWorkingPrompt && isArchitecturalPivot && !isBuildTrigger) {
-    responseContent = `I've registered the architectural change: transitioning from local browser storage to a hosted cloud database.
-
-Here is how I've updated the project:
-1. **Preserved**: All user flows, visual layouts, schemas, and non-goals remain completely intact.
-2. **Updated**: Replaced local storage with a server-side API proxy layer and cloud database connection.
-3. **Invalidated**: Removed obsolete offline-only constraints to prevent contradictory directives.
-
-The Build Prompt on the right has been updated with this cohesive architecture.`;
-
-    workingPromptFallback = workingPromptFallback.replace(
-      /Backend & Storage: Client-side persistent key-value state \(LocalStorage\) with clean reactive hooks\./g,
-      "Backend & Storage: Hosted Cloud Database (PostgreSQL / Firestore) connected via server-side Express API routes (/api/*) with lazy initialization and secret proxying."
-    );
-    if (!workingPromptFallback.includes("Hosted Cloud Database")) {
-      workingPromptFallback = workingPromptFallback.replace(
-        "# TECHNICAL ARCHITECTURE:",
-        `# TECHNICAL ARCHITECTURE:
-- Data Architecture: Hosted Cloud Database with server-side proxy routes (/api/*). Never expose DB credentials to the browser.`
-      );
-    }
-    updatedProjectRequirements.architecture.storage = "Hosted Cloud Database via Express API proxy";
-  }
-  // 3. Build Trigger
-  else if (isBuildTrigger) {
-    responseContent = `I've synthesized our project into the finalized **Build Prompt** on the right.
-
-It establishes:
-• Single-screen architecture with instant tactile feedback
-• Strict TypeScript data models and validation contracts
-• Explicit non-goals to prevent scope creep in AI Studio
-• Production-ready styling and resilient error handling
-
-You can copy the prompt using **Copy Prompt for AI Studio** on the right, open **Google AI Studio**, and paste it in to build your application.`;
-  }
-  // 4. Incremental Refinement (e.g. dark mode, csv export)
-  else if (currentWorkingPrompt && !isBuildTrigger) {
-    if (/dark\s*mode/i.test(lastUserMessage)) {
-      workingPromptFallback = workingPromptFallback.replace(
-        "Sophisticated neutral palette",
-        "Sleek dark theme with dark stone neutrals (#1c1917) and warm accents"
-      );
-      responseContent = `I know where we are with this project. I've updated the Build Prompt to specify a refined dark theme while preserving our established schemas and core workflows.`;
-    } else if (/csv|export/i.test(lastUserMessage)) {
-      if (!workingPromptFallback.includes("CSV")) {
-        workingPromptFallback = workingPromptFallback.replace(
-          "4. Export/copy data functionality with instant visual confirmation.",
-          "4. Dedicated CSV file export and clipboard copy functionality with instant visual confirmation."
-        );
-      }
-      responseContent = `I know where we are with this project. I've incorporated dedicated CSV export functionality into the Build Prompt, keeping all existing architecture and decisions intact.`;
-    } else {
-      responseContent = `I know where we are with this project. I've incorporated your feedback into the Build Prompt while preserving everything already established. What do you think?`;
-    }
-  }
-  // 5. Initial Idea Exploration
-  else {
     responseContent = `I understand what you're trying to do. Here's what I think you mean: You want a focused, zero-friction solution for "${lastUserMessage}" that solves this specific problem cleanly without enterprise bloat.
 
 Here's where it could actually be useful:
@@ -457,7 +541,7 @@ What do you think?`;
     projectUpdate: {
       title: projectTitle || ideaTopic,
       requirements: updatedProjectRequirements,
-      understanding: `Focused single-screen solution for ${lastUserMessage}`,
+      understanding: isVagueOrDiscoveryOnly ? `Exploring initial friction and problem space` : `Focused single-screen solution for ${lastUserMessage}`,
     },
   };
 }
@@ -540,24 +624,37 @@ MODIFY PRECISELY.
 
 Change the smallest valid set of project decisions necessary to keep the whole project coherent.
 
+THE 5 EVALUATION DIMENSIONS (CORE DISCIPLINE):
+1. 🧠 Understanding: Understand the actual problem behind the user's words. Do not accept buzzwords at face value.
+2. 🔎 Investigation: Challenge weak assumptions. Investigate existing alternatives (competitors, spreadsheets, paper notes). Tell the unvarnished truth if an idea is saturated or unviable.
+3. 💡 Opportunity: Identify the genuine wedge or gap where a lightweight, focused tool actually wins.
+4. 🏗️ Architecture: Produce clean, minimal, single-screen specifications without unsolicited backend bloat or complex wizards.
+5. 🎯 Restraint (KNOWING WHEN TO PRODUCE THE PROMPT):
+   - DO NOT prematurely invent a Build Prompt if the idea is completely vague (e.g. "make people's lives easier but not sure what yet"), if the user is asking "is this worth building?", or if the user asks to talk it through first.
+   - In these discovery scenarios, set "workingPrompt": "" (empty string) and drive the conversation with discriminating questions. The right pane will display "No build prompt yet. Continue the conversation to develop the project."
+   - ONLY produce or update the "workingPrompt" when a concrete, viable product definition has been reached, or when the user says "Okay. Build this", or when the user provides specific domain requirements (e.g. electrical contractor job tracker, music stem exporter).
+
 HANDLING DIFFERENT USER INTENTS:
-1. AI Studio Feedback (e.g. "The auth works, but data import is broken", "AI Studio changed the dashboard and now export is failing"):
+1. Vague / Under-Explored Ideas or Bad Ideas (e.g. "I have an idea to make lives easier...", "another short video app, is this worth building?"):
+   - Exercise RESTRAINT. Do NOT generate a prompt yet ("workingPrompt": "").
+   - Push back or ask 1-2 sharp, clarifying questions to isolate who is suffering and what the acute moment of pain is.
+2. AI Studio Feedback (e.g. "The auth works, but data import is broken", "AI Studio changed the dashboard and now export is failing"):
    - Recognize the SAME ongoing project.
    - Retain working components (e.g. auth, layout, schemas).
    - Isolate the failing component or regression.
    - Acknowledge established state ("I know where we are with this project. Let's address [the issue].")
    - Update only the affected section of the Build Prompt or provide targeted fix directives for AI Studio.
-2. Significant Architectural Pivot (e.g. "I don't want this to use a local database anymore, use a hosted database"):
+3. Significant Architectural Pivot (e.g. "I don't want this to use a local database anymore, use a hosted database"):
    - Identify which decisions depend on the old architecture.
    - Invalidate and remove obsolete requirements (prevent contradictory stacking!).
    - Preserve unaffected decisions (UX flow, entities, styling).
    - Revise affected architecture and data storage in the Build Prompt.
-3. Incremental Requirement (e.g. "Add CSV export", "Use dark mode", "Add category filtering"):
+4. Incremental Requirement (e.g. "Add CSV export", "Use dark mode", "Add category filtering"):
    - Preserve all established decisions, splice the new requirement into the existing Build Prompt cleanly without resetting.
-4. Build Trigger (e.g. "Okay. Build this", "Let's build"):
+5. Build Trigger (e.g. "Okay. Build this", "Let's build"):
    - Finalize the complete, polished Build Prompt for AI Studio.
-5. Initial Exploration:
-   - Understand core intent, challenge weak assumptions, investigate what exists, identify the gap, and draft the initial specification.
+6. Concrete Domain Idea (e.g. electrician job tracker, music stem manager):
+   - Understand the specific workflows, identify the gap, and synthesize the initial sharp Build Prompt.
 
 BUILD PROMPT GUIDELINES:
 The "workingPrompt" field MUST be a complete, high-precision, copy-ready prompt intended for Google AI Studio Build (https://ai.studio/build).
@@ -566,7 +663,7 @@ It must always be internally consistent, free of contradictory obsolete statemen
 Format your response as a valid JSON object matching this schema:
 {
   "content": "Conversational reply as the dedicated Project Manager. Tone: clear, collaborative, professional. Acknowledge continuity ('I know where we are with this project...'), diagnose the change, explain what was updated.",
-  "workingPrompt": "The complete, living, internally consistent Build Prompt for Google AI Studio.",
+  "workingPrompt": "The complete, living Build Prompt for Google AI Studio. CRITICAL RESTRAINT RULE: If the user's idea is completely vague (e.g. 'make people\\'s lives easier but not sure yet'), if the user asks 'is this worth building?' on a saturated idea, or if the user explicitly asks to talk through/discover first, you MUST return an empty string \"\" for workingPrompt! Only produce a workingPrompt when a concrete problem and workflow are defined, or the user says 'Okay. Build this'.",
   "projectUpdate": {
     "title": "Short descriptive project title",
     "understanding": "Updated accumulated understanding of what is being built",
@@ -619,7 +716,11 @@ Return ONLY the JSON object.`;
       }
 
       const parsed = JSON.parse(response.text || "{}");
-      if (parsed && (parsed.content || parsed.workingPrompt)) {
+      if (parsed && (parsed.content || parsed.workingPrompt !== undefined)) {
+        // Enforce restraint: If user gave completely vague idea or unformed discovery, do not emit premature prompt
+        if (isTooVagueOrUnderExplored(lastUserMessage) && !isBuildTrigger && !currentWorkingPrompt) {
+          parsed.workingPrompt = "";
+        }
         return res.json(parsed);
       }
       throw new Error("Model returned empty or non-conforming payload");
