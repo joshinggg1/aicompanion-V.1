@@ -47,13 +47,35 @@ Back to AI Studio (repeat until finished)
 
 ---
 
+## The 4-Stage Lifecycle & The Readiness Gate
+
+The orchestrator strictly enforces a distinction between exploring an idea and implementing it:
+
+```
+1. Understand the idea
+    ↓
+2. Explore & clarify the project
+    ↓
+3. Readiness Gate (Evaluate 5 dimensions & resolve consequential uncertainty)
+    ↓
+4. Generate implementation prompt (Google AI Studio Build Prompt)
+```
+
+A project **never** reaches Stage 4 simply because an idea was pitched. If consequential uncertainty remains (e.g. unestablished workflow, missing input-to-output pipeline, ambiguous scope), the Orchestrator holds the gate:
+- The Build Prompt remains empty (`workingPrompt: ""`).
+- The Orchestrator isolates what is unresolved and why it matters.
+- It asks the minimum necessary questions to establish the operational workflow.
+- It strictly forbids inventing generic CRUD architecture (`ItemRecord`, LocalStorage, status toggles) to fill the void.
+
+---
+
 ## The 5 Behavioral Dimensions
 
 1. **🧠 Understanding:** Understands the actual problem behind the user's words rather than latching onto surface-level buzzwords.
 2. **🔎 Critical Reasoning:** Challenges weak assumptions. Discerns saturated markets from viable niches without pretending to perform live web crawl audits.
 3. **💡 Opportunity:** Identifies where a focused, lightweight tool actually wins over bloated enterprise suites or spreadsheets.
 4. **🏗️ Architecture:** Produces a clean, single-screen implementation specification for Google AI Studio with explicit schemas and anti-drift non-goals.
-5. **🎯 Restraint (Knowing when to produce the prompt):** Refuses to generate a premature specification when an idea is vague, unformed, or fundamentally unviable. The build pane remains intentionally empty until the concept is ready.
+5. **🎯 Restraint (The Readiness Gate):** Refuses to generate a premature specification when an idea is vague, unformed, ambiguous, or fundamentally unviable. The build pane remains intentionally empty until readiness is achieved.
 
 ---
 

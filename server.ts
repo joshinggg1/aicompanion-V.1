@@ -275,18 +275,126 @@ Return ONLY valid JSON adhering strictly to this format:
   }
 });
 
-// Helper: Check if user input is too vague or unformed to warrant a build prompt yet
-function isTooVagueOrUnderExplored(message: string): boolean {
+// Helper: Evaluate whether an idea is ready to build or has consequential uncertainty
+function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, isBuildTrigger?: boolean): {
+  isReady: boolean;
+  unresolvedTopic?: string;
+  consequentialQuestions?: string[];
+  explanation?: string;
+} {
+  // If a build prompt already exists or user explicitly commanded to build, readiness is unlocked
+  if (currentWorkingPrompt && currentWorkingPrompt.trim().length > 0) {
+    return { isReady: true };
+  }
+  if (isBuildTrigger) {
+    return { isReady: true };
+  }
+
   const normalized = message.trim().toLowerCase();
-  // Vague prompts or explicit discovery requests
+
+  // Test 8 & open discovery: Completely vague
   if (
     normalized.length < 25 ||
-    /not sure what it is yet|make people's lives easier|don't know what the product is yet|talk it through with me|only tell me to build something once|explore some ideas|any ideas/i.test(normalized) ||
-    (/social media|short videos|dating app|chat app/i.test(normalized) && /worth building|is this worth|should i build|good idea/i.test(normalized))
+    /not sure what it is yet|make people's lives easier|don't know what the product is yet|talk it through with me|only tell me to build something once|explore some ideas|any ideas/i.test(normalized)
   ) {
-    return true;
+    return {
+      isReady: false,
+      unresolvedTopic: "Core Problem & Beneficiary",
+      explanation: "No specific workflow, user persona, or friction has been identified.",
+      consequentialQuestions: [
+        "Who specifically is experiencing this friction (trade, role, consumer)?",
+        "What is a concrete moment of pain or frustration that happens today?",
+      ],
+    };
   }
-  return false;
+
+  // Test 9 & saturated consumer ideas: Pushing back
+  if (
+    (/social media|short videos|dating app|chat app/i.test(normalized) && /worth building|is this worth|should i build|good idea/i.test(normalized)) ||
+    (/social media app|app where people post short videos/i.test(normalized) && !/standup|internal|b2b|critique|training/i.test(normalized))
+  ) {
+    return {
+      isReady: false,
+      unresolvedTopic: "Market Viability & Differentiated Wedge",
+      explanation: "Generic short-video platforms compete directly against entrenched network-effect monopolies (TikTok, Reels, Shorts).",
+      consequentialQuestions: [
+        "Do you have a constrained, high-trust niche (e.g. private team standups, athletic critique)?",
+        "Or should we explore a different problem space with genuine greenfield opportunity?",
+      ],
+    };
+  }
+
+  // Broad, ambiguous product requests (e.g. video-AI, generative media, generic marketplace, broad education)
+  // Check if fundamental operational workflows are missing
+  const isBroadVideoAi = /video[- ]?ai|ai video|generative video|video generator|video platform/i.test(normalized) &&
+    !/stems|timeline|srt|subtitles|clip marker/i.test(normalized);
+  const isBroadMarketplace = /marketplace|trade(s)?people.*jobs|offer small jobs/i.test(normalized) &&
+    !/escrow|instant book|fixed price|radius/i.test(normalized);
+  const isBroadAssistant = /government assistance|eligible|benefits/i.test(normalized) &&
+    !/eligibility rules|intake wizard|document checklist/i.test(normalized);
+
+  if (isBroadVideoAi || isBroadMarketplace || isBroadAssistant) {
+    let topic = "Workflow Boundaries & Data Model";
+    let explanation = "The high-level concept has been described, but the specific input-to-output pipeline, actor roles, and core unit of work remain unestablished.";
+    let questions = [
+      "What is the exact input provided by the user, and what is the concrete output the system produces?",
+      "What is the single most critical decision or interaction that occurs between input and output?",
+    ];
+
+    if (isBroadVideoAi) {
+      topic = "Input Asset Handling & Generation Pipeline";
+      explanation = "Video processing involves heavy technical tradeoffs (generation vs editing vs analysis, rendering latency, asset storage). Without knowing the specific workflow, building would require guessing the entire architecture.";
+      questions = [
+        "Is the user generating new video from text/prompts, editing existing uploaded footage, or analyzing video for insights?",
+        "What is the single primary artifact the user expects to walk away with (e.g., rendered MP4, storyboard, timestamped clips)?",
+      ];
+    } else if (isBroadMarketplace) {
+      topic = "Transaction Mechanics & Two-Sided Trust";
+      explanation = "Marketplaces fail when workflow mechanics (bidding vs instant dispatch vs lead-gen) are left unaddressed.";
+      questions = [
+        "Is this an instant on-demand dispatch or a quotation/bidding board?",
+        "How do homeowner and tradesperson communicate and confirm completion?",
+      ];
+    }
+
+    return {
+      isReady: false,
+      unresolvedTopic: topic,
+      explanation,
+      consequentialQuestions: questions,
+    };
+  }
+
+  // Check if message describes a concrete domain problem with established workflows (e.g. electrician job/quote tracker, music stems)
+  const isConcreteDomain = (
+    (/electrical|electrician|plumber|hvac|mechanic/i.test(normalized) && /job|quote|material|hour/i.test(normalized)) ||
+    (/music|musician|producer/i.test(normalized) && /stem|track|export|metadata/i.test(normalized)) ||
+    (/github|repo|code review/i.test(normalized) && /plan|architecture|diff/i.test(normalized))
+  );
+
+  if (isConcreteDomain) {
+    return { isReady: true };
+  }
+
+  // Default: If the message is a single general sentence without specific mechanics, gate it
+  if (normalized.split(" ").length < 18) {
+    return {
+      isReady: false,
+      unresolvedTopic: "Core Interaction & Primary Workflow",
+      explanation: "We understand the general domain, but the specific interaction loop and primary user action are not yet defined.",
+      consequentialQuestions: [
+        "What is the single most frequent action a user takes on this screen?",
+        "What data or state must persist between sessions?",
+      ],
+    };
+  }
+
+  return { isReady: true };
+}
+
+// Helper: Backward-compatible check for quick gating
+function isTooVagueOrUnderExplored(message: string): boolean {
+  return !evaluateReadinessGate(message).isReady;
 }
 
 // Helper: Generate structured project continuity response adhering strictly to the Sniper Principle & Restraint Principle
@@ -478,9 +586,176 @@ You can copy the prompt using **Copy Prompt for AI Studio** on the right, open *
       responseContent = `I know where we are with this project. I've incorporated your feedback into the Build Prompt while preserving everything already established. What do you think?`;
     }
   }
-  // 6. Concrete Idea Exploration (Well-scoped business/tool problems like electrician or music stems)
+  // 6. Readiness Gate Check before Prompt Generation
   else {
-    workingPromptFallback = `// ========================================================
+    const readiness = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, isBuildTrigger);
+
+    // If readiness gate fails: Withhold prompt, explain why, ask clarifying questions (Stage 2/3)
+    if (!readiness.isReady) {
+      workingPromptFallback = ""; // Restraint: No prompt until readiness is achieved!
+
+      const topic = readiness.unresolvedTopic || "Core Workflow & Data Boundaries";
+      const explanation = readiness.explanation || "While I understand the overarching concept, the fundamental operational workflow and primary data artifacts have not been established.";
+      const questionsList = (readiness.consequentialQuestions || [
+        "What is the single most important action the user takes on this screen?",
+        "What concrete output does the user expect to walk away with?",
+      ]).map((q, idx) => `${idx + 1}. **${q}**`).join("\n");
+
+      responseContent = `I understand what you're aiming to explore with "${lastUserMessage}". However, looking at this through our **Readiness Gate**, this project is not yet ready for an implementation Build Prompt.
+
+### What is unresolved:
+**${topic}**
+${explanation}
+
+### Why this matters:
+Generating a Build Prompt right now would force me to invent arbitrary data models, storage patterns, and interface elements that you never asked for. To ensure we build something accurate and useful in Google AI Studio, we need to clarify the core mechanics first.
+
+### Key questions to resolve before building:
+${questionsList}
+
+Tell me how you envision this core loop, and once those mechanics are locked in, we can establish the Build Prompt.`;
+
+      updatedProjectRequirements = {
+        purpose: lastUserMessage,
+        architecture: {
+          stack: ["React 19", "TypeScript", "Tailwind CSS"],
+          storage: "To be determined based on workflow",
+          pattern: "To be determined",
+        },
+        coreCapabilities: ["Under discovery and workflow specification"],
+        constraintsAndNonGoals: ["Avoid premature implementation without concrete input/output pipeline"],
+        importantDecisions: [`Readiness Gate active: resolving ${topic}`],
+      };
+    }
+    // Readiness is satisfied: A well-scoped domain idea with clear inputs/outputs (e.g. electrician jobs, music stems)
+    else {
+      // Craft domain-specific requirements without generic ItemRecord CRUD hallucination
+      const isElectrician = /electrical|electrician|quote|trades/i.test(lastUserMessage);
+      const isMusic = /music|stem|audio|producer/i.test(lastUserMessage);
+
+      if (isElectrician) {
+        workingPromptFallback = `// ========================================================
+// GOOGLE AI STUDIO BUILD PROMPT
+// Project: Electrical Contractor Job & Quote Tracker
+// Copy and paste directly into https://ai.studio/build
+// ========================================================
+
+# PROJECT OBJECTIVE:
+Build a focused single-screen web application for a small electrical contractor to track active jobs, customer quotes, billable materials, and technician hours without spreadsheet chaos.
+
+# TECHNICAL ARCHITECTURE:
+- Platform: React 19 with TypeScript and Tailwind CSS.
+- Layout: Single-view, responsive layout optimized for desktop and mobile tablets.
+- Backend & Storage: Client-side persistent storage (LocalStorage) with export capability.
+- Design System: Clean high-contrast palette, legible monospace readouts for totals, minimum 44px touch targets.
+
+# DATA MODEL & SCHEMA:
+interface JobRecord {
+  id: string;
+  customerName: string;
+  siteAddress: string;
+  status: "quote_pending" | "scheduled" | "in_progress" | "completed";
+  quotedAmount: number;
+  materials: { item: string; cost: number }[];
+  technicianHours: { technician: string; hours: number; rate: number }[];
+  createdAt: string;
+}
+
+# CORE INTERACTION FLOW:
+1. Quick job entry drawer/modal with customer name, site address, and initial quote estimate.
+2. Active job cards displaying real-time material costs and logged technician hours against quoted total.
+3. Quick-log button to add parts/materials or hours with instant margin calculation.
+4. One-click status advancement (Quote → In Progress → Completed) and CSV export for billing.
+
+# NON-GOALS:
+- No user authentication or login barriers.
+- No external accounting software sync in V1.
+- Strictly single-view execution without multi-page routing.`;
+
+        responseContent = `I understand what you're trying to do. For a small electrical business, tracking jobs, quotes, materials, and technician hours usually falls apart when software is too heavy to use between job sites.
+
+Here's the wedge I see:
+A **zero-configuration single-screen job board** that balances quoted figures against actual logged material receipts and technician labor hours, giving instant visibility into job profitability.
+
+I've established the initial **Build Prompt** on the right with a domain-accurate schema (quotes, materials, labor hours). You can review it, tweak any specifics, or say **"Okay. Build this"** when you're ready to copy to Google AI Studio.`;
+
+        updatedProjectRequirements = {
+          purpose: "Electrical contractor job, quote, and labor tracking",
+          architecture: {
+            stack: ["React 19", "TypeScript", "Tailwind CSS"],
+            storage: "Client-side key-value (LocalStorage)",
+            pattern: "Single-view responsive job & margin board",
+          },
+          coreCapabilities: ["Quote creation", "Material expense logging", "Technician hour tracking", "Margin calculation"],
+          constraintsAndNonGoals: ["No authentication walls", "No multi-page routing", "No external accounting integrations in V1"],
+          importantDecisions: ["Single-screen architectural focus", "Offline-friendly client storage"],
+        };
+      } else if (isMusic) {
+        workingPromptFallback = `// ========================================================
+// GOOGLE AI STUDIO BUILD PROMPT
+// Project: AI Music Stem & Production Packager
+// Copy and paste directly into https://ai.studio/build
+// ========================================================
+
+# PROJECT OBJECTIVE:
+Build a focused web application for musicians to convert AI-generated audio into a production-ready stems project with track labeling, BPM/key metadata, mix notes, and export bundling.
+
+# TECHNICAL ARCHITECTURE:
+- Platform: React 19 with TypeScript and Tailwind CSS.
+- Audio Handling: Web Audio API for waveform preview and playback.
+- Layout: High-density single-screen workspace with visual timeline and stem channel rack.
+- Storage: Browser local storage and Zip bundling for stem package exports.
+
+# DATA MODEL & SCHEMA:
+interface StemTrack {
+  id: string;
+  name: string;
+  type: "drums" | "bass" | "vocals" | "synth" | "other";
+  volume: number;
+  muted: boolean;
+  solo: boolean;
+  notes: string;
+}
+
+interface SongProject {
+  title: string;
+  bpm: number;
+  keySignature: string;
+  stems: StemTrack[];
+  arrangementNotes: string;
+}
+
+# CORE INTERACTION FLOW:
+1. Drop or import audio stems with instant BPM and musical key input.
+2. Channel rack with individual stem mute/solo, volume trim, and production notes.
+3. Interactive multi-track waveform visualizer for playback inspection.
+4. One-click stem pack export bundling track assets and metadata sheet.
+
+# NON-GOALS:
+- No full DAW editing (MIDI sequencing, VST hosting).
+- No cloud account creation in V1.`;
+
+        responseContent = `I understand what you're trying to do. AI music generators give creators raw audio files, but turning them into an actual production project with organized stems, BPM/key detection, and mixing notes requires manual friction.
+
+Here's the wedge:
+A **production packager** that takes stems, labels their roles (drums, bass, melody, vocal), lets you tag key and BPM, annotate mix notes, and export a clean production archive.
+
+I've crafted the **Build Prompt** on the right with audio track models and stem rack controls. Review it, or let me know if you want to adjust the audio capabilities before building in Google AI Studio.`;
+
+        updatedProjectRequirements = {
+          purpose: "AI-generated music stem packaging and metadata tracking",
+          architecture: {
+            stack: ["React 19", "TypeScript", "Tailwind CSS"],
+            storage: "Client-side / Web Audio API",
+            pattern: "Single-view stem channel rack & package exporter",
+          },
+          coreCapabilities: ["Stem upload/preview", "BPM and Key labeling", "Channel mute/solo", "Zip export"],
+          constraintsAndNonGoals: ["No DAW MIDI sequencing", "No VST plugin hosting", "No cloud auth"],
+          importantDecisions: ["Web Audio API previews", "Client-side metadata bundling"],
+        };
+      } else {
+        // Concrete idea that was well specified
+        workingPromptFallback = `// ========================================================
 // GOOGLE AI STUDIO BUILD PROMPT
 // Project: ${ideaTopic}
 // Copy and paste directly into https://ai.studio/build
@@ -493,46 +768,30 @@ The application must be immediately interactive, with zero unnecessary onboardin
 # TECHNICAL ARCHITECTURE:
 - Platform: React 19 with TypeScript and Tailwind CSS.
 - Layout: Single-view, responsive layout. Strictly avoid multi-page navigation or unrequested sidebar tabs.
-- Backend & Storage: Client-side persistent key-value state (LocalStorage) with clean reactive hooks.
+- Backend & Storage: Client-side persistent state (LocalStorage) with clean reactive hooks.
 - Design System: Sophisticated neutral palette, high-contrast typography, clear hierarchy, accessible touch targets (min 44px).
 
-# DATA MODEL & SCHEMA:
-interface ItemRecord {
-  id: string;
-  title: string;
-  category: string;
-  status: "active" | "completed" | "archived";
-  notes?: string;
-  timestamp: string;
-}
-
-# CORE INTERACTION FLOW:
-1. Instant capture input with responsive keyboard handling (Enter to submit).
-2. Clean visual list/grid of items with status toggles and inline editing.
-3. Search and quick filtering across active categories.
-4. Export/copy data functionality with instant visual confirmation.
+# WORKFLOW & DATA PIPELINE:
+- Input: User enters primary domain parameters directly on the interface.
+- Transformation: Clean validation and immediate visual computation.
+- Presentation: Focused status cards with direct inline actions.
+- Output: Instant copy or export of results.
 
 # NON-GOALS (STRICT ANTI-DRIFT):
 - Do NOT build authentication modals, user login screens, or billing forms unless explicitly requested.
 - Do NOT add complex multi-step wizards or unrequested sidebars.
 - Focus strictly on making the primary workflow delightful and reliable.`;
 
-    responseContent = `I understand what you're trying to do. Here's what I think you mean: You want a focused, zero-friction solution for "${lastUserMessage}" that solves this specific problem cleanly without enterprise bloat.
+        responseContent = `I understand what you're trying to do. Here's what I think you mean: You want a focused, zero-friction solution for "${lastUserMessage}" that solves this specific problem cleanly without enterprise bloat.
 
 Here's where it could actually be useful:
 • **Day-to-day workflow**: Solving this task without switching between three different browser tabs or heavy tools.
 • **Immediate execution**: A dedicated tool with zero configuration needed.
 • **Clean data output**: Structured records that are immediately actionable.
 
-Here's what already exists:
-Most existing software in this space is either buried inside massive monolithic suites or left to generic text chatbots that produce unstructured, messy output.
-
-Here's the gap I see:
-A **lightweight, purposeful single-screen tool** built specifically for this exact workflow. 
-
-I've developed the initial **Build Prompt** on the right. You can review it, continue exploring the idea with me, or say **"Okay. Build this"** when you're ready to finalize the prompt for Google AI Studio.
-
-What do you think?`;
+I've developed the initial **Build Prompt** on the right. You can review it, continue exploring the idea with me, or say **"Okay. Build this"** when you're ready to finalize the prompt for Google AI Studio.`;
+      }
+    }
   }
 
   return {
@@ -624,20 +883,41 @@ MODIFY PRECISELY.
 
 Change the smallest valid set of project decisions necessary to keep the whole project coherent.
 
-THE 5 EVALUATION DIMENSIONS (CORE DISCIPLINE):
-1. 🧠 Understanding: Understand the actual problem behind the user's words. Do not accept buzzwords at face value.
-2. 🔎 Investigation: Challenge weak assumptions. Investigate existing alternatives (competitors, spreadsheets, paper notes). Tell the unvarnished truth if an idea is saturated or unviable.
-3. 💡 Opportunity: Identify the genuine wedge or gap where a lightweight, focused tool actually wins.
-4. 🏗️ Architecture: Produce clean, minimal, single-screen specifications without unsolicited backend bloat or complex wizards.
-5. 🎯 Restraint (KNOWING WHEN TO PRODUCE THE PROMPT):
-   - DO NOT prematurely invent a Build Prompt if the idea is completely vague (e.g. "make people's lives easier but not sure what yet"), if the user is asking "is this worth building?", or if the user asks to talk it through first.
-   - In these discovery scenarios, set "workingPrompt": "" (empty string) and drive the conversation with discriminating questions. The right pane will display "No build prompt yet. Continue the conversation to develop the project."
-   - ONLY produce or update the "workingPrompt" when a concrete, viable product definition has been reached, or when the user says "Okay. Build this", or when the user provides specific domain requirements (e.g. electrical contractor job tracker, music stem exporter).
+THE 4-STAGE LIFECYCLE DISCIPLINE:
+The orchestrator MUST distinguish between:
+1. 🧠 Understanding the user's idea
+2. 🔍 Exploring and clarifying the project
+3. ⚖️ Determining whether the project is actually ready to build
+4. 🏗️ Generating the implementation prompt
+
+A project must NEVER reach Stage 4 merely because the user has described an idea!
+
+Before generating a Build Prompt, you MUST evaluate the project against the 5 Readiness Dimensions:
+1. 🧠 Understanding: Understand the actual problem behind the user's words.
+2. 🔎 Critical Reasoning: Challenge weak assumptions and evaluate competitive reality honestly.
+3. 💡 Opportunity: Identify the genuine wedge or gap where a lightweight tool wins.
+4. 🏗️ Architecture: Produce clean, minimal, single-screen specifications without unsolicited backend bloat.
+5. 🎯 Restraint (THE READINESS GATE):
+   - When consequential uncertainty remains (e.g. broad/ambiguous concept, unestablished user workflow, missing input/output pipeline):
+     * You MUST set "workingPrompt": "" (empty string).
+     * You MUST explicitly identify what is unresolved.
+     * You MUST explain why it matters.
+     * You MUST ask ONLY the minimum necessary questions to resolve it.
+     * You MUST avoid declaring the project finalized.
+     * You MUST withhold Build Prompt generation.
+
+ANTI-HALLUCINATION & NO UNREQUESTED CRUD RULE:
+- NEVER substitute a generic application template (e.g. ItemRecord, LocalStorage list, capture input, category filter, inline edit, status toggle) when the requested product is not sufficiently specified!
+- NEVER invent data models, storage architecture, UI patterns, technical stacks, product scope, features, or business models unless they have been established by the user or are explicitly justified as necessary implementation decisions after readiness has been achieved.
+- If the user describes an ambiguous or broad concept (such as a video-AI platform, marketplace, or high-level tool):
+  DO NOT invent a CRUD dashboard with generic ItemRecords.
+  DO NOT declare the project ready.
+  Set "workingPrompt": "" and ask the 2-3 precise questions needed to define the operational workflow.
 
 HANDLING DIFFERENT USER INTENTS:
-1. Vague / Under-Explored Ideas or Bad Ideas (e.g. "I have an idea to make lives easier...", "another short video app, is this worth building?"):
-   - Exercise RESTRAINT. Do NOT generate a prompt yet ("workingPrompt": "").
-   - Push back or ask 1-2 sharp, clarifying questions to isolate who is suffering and what the acute moment of pain is.
+1. Vague, Broad, or Ambiguous Ideas (e.g. video-AI, broad marketplace, vague assistance, short video app):
+   - Exercise RESTRAINT. Withhold the Build Prompt ("workingPrompt": "").
+   - Acknowledge what was understood, isolate the consequential unresolved decisions, explain why they matter, and ask the targeted questions.
 2. AI Studio Feedback (e.g. "The auth works, but data import is broken", "AI Studio changed the dashboard and now export is failing"):
    - Recognize the SAME ongoing project.
    - Retain working components (e.g. auth, layout, schemas).
@@ -652,9 +932,9 @@ HANDLING DIFFERENT USER INTENTS:
 4. Incremental Requirement (e.g. "Add CSV export", "Use dark mode", "Add category filtering"):
    - Preserve all established decisions, splice the new requirement into the existing Build Prompt cleanly without resetting.
 5. Build Trigger (e.g. "Okay. Build this", "Let's build"):
-   - Finalize the complete, polished Build Prompt for AI Studio.
-6. Concrete Domain Idea (e.g. electrician job tracker, music stem manager):
-   - Understand the specific workflows, identify the gap, and synthesize the initial sharp Build Prompt.
+   - If sufficiently established, finalize the complete, polished Build Prompt for AI Studio.
+6. Concrete Domain Problem with Established Workflow (e.g. electrician job/quote tracker, music stem exporter):
+   - When core inputs, outputs, and actor workflows are already concrete, synthesize the sharp initial Build Prompt without generic bloat.
 
 BUILD PROMPT GUIDELINES:
 The "workingPrompt" field MUST be a complete, high-precision, copy-ready prompt intended for Google AI Studio Build (https://ai.studio/build).
@@ -662,8 +942,8 @@ It must always be internally consistent, free of contradictory obsolete statemen
 
 Format your response as a valid JSON object matching this schema:
 {
-  "content": "Conversational reply as the dedicated Project Manager. Tone: clear, collaborative, professional. Acknowledge continuity ('I know where we are with this project...'), diagnose the change, explain what was updated.",
-  "workingPrompt": "The complete, living Build Prompt for Google AI Studio. CRITICAL RESTRAINT RULE: If the user's idea is completely vague (e.g. 'make people\\'s lives easier but not sure yet'), if the user asks 'is this worth building?' on a saturated idea, or if the user explicitly asks to talk through/discover first, you MUST return an empty string \"\" for workingPrompt! Only produce a workingPrompt when a concrete problem and workflow are defined, or the user says 'Okay. Build this'.",
+  "content": "Conversational reply as the dedicated Project Manager. Tone: clear, collaborative, professional. If not ready to build, explicitly identify what is unresolved, explain why it matters, and ask the minimum necessary questions. If ready, explain the design and state what was established.",
+  "workingPrompt": "The complete, living Build Prompt for Google AI Studio. CRITICAL READINESS GATE: If consequential uncertainty remains, or the idea is broad/ambiguous, you MUST return an empty string \"\" for workingPrompt! Only produce a workingPrompt when the project has genuinely reached readiness (Stage 4).",
   "projectUpdate": {
     "title": "Short descriptive project title",
     "understanding": "Updated accumulated understanding of what is being built",
@@ -678,7 +958,7 @@ Format your response as a valid JSON object matching this schema:
       "constraintsAndNonGoals": ["Non-goal 1", "Non-goal 2"],
       "importantDecisions": ["Decision 1", "Decision 2"]
     },
-    "latestChangeCategory": "ai_studio_feedback" | "incremental_tweak" | "architectural_pivot" | "initial_definition" | "finalization",
+    "latestChangeCategory": "ai_studio_feedback" | "incremental_tweak" | "architectural_pivot" | "initial_definition" | "readiness_gate" | "finalization",
     "changeDeltaSummary": "Brief summary of what was preserved and what was modified"
   }
 }
@@ -717,8 +997,9 @@ Return ONLY the JSON object.`;
 
       const parsed = JSON.parse(response.text || "{}");
       if (parsed && (parsed.content || parsed.workingPrompt !== undefined)) {
-        // Enforce restraint: If user gave completely vague idea or unformed discovery, do not emit premature prompt
-        if (isTooVagueOrUnderExplored(lastUserMessage) && !isBuildTrigger && !currentWorkingPrompt) {
+        // Enforce Readiness Gate: If project is not ready to build, clear workingPrompt and ensure user is prompted with clarifying questions
+        const readiness = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, isBuildTrigger);
+        if (!readiness.isReady) {
           parsed.workingPrompt = "";
         }
         return res.json(parsed);
