@@ -249,12 +249,105 @@ export interface FeedbackIteration {
   targetedChanges: string[];
 }
 
+export interface ReadinessDimensionCheck {
+  id: string;
+  label: string;
+  status: "met" | "pending" | "unresolved";
+  details?: string;
+}
+
+export interface DownstreamArchitectureLayer {
+  layer: string;
+  details: string;
+}
+
+export interface DownstreamFileNode {
+  path: string;
+  purpose: string;
+}
+
+export interface DownstreamModule {
+  name: string;
+  responsibility: string;
+  dependencies: string[];
+}
+
+export interface DownstreamImplementationStep {
+  stepNumber: number;
+  title: string;
+  promptObjective: string;
+  verificationCriteria: string[];
+}
+
+export interface DownstreamProjectRepresentation {
+  architecture: {
+    summary: string;
+    dataFlow: string;
+    techLayers: DownstreamArchitectureLayer[];
+  };
+  repositoryStructure: {
+    treeText: string;
+    files: DownstreamFileNode[];
+  };
+  moduleRelationships: {
+    modules: DownstreamModule[];
+  };
+  implementationPlan: {
+    steps: DownstreamImplementationStep[];
+  };
+  gitHubIntegrationNote?: string;
+}
+
+export interface CanonicalProjectDefinition {
+  corePurpose: string;
+  primaryWorkflow: string;
+  inputsAndOutputs: {
+    inputs: string[];
+    outputs: string[];
+  };
+  capabilities: string[];
+  architecture: {
+    stack: string[];
+    storage: string;
+    pattern: string;
+  };
+  constraintsAndNonGoals: string[];
+  acceptedDecisions: string[];
+  supersededDecisions: string[];
+}
+
+export type TargetOutputMode = "build" | "dev" | "create";
+
+export interface TargetModeMeta {
+  id: TargetOutputMode;
+  name: string;
+  targetLabel: string;
+  internalDistinction: "Detail" | "Plan" | "Brief";
+  tagline: string;
+  description: string;
+  primaryActionLabel: string;
+  destinationUrl?: string;
+}
+
+export interface TargetProjections {
+  build: string; // BUILD (Detail): Google AI Studio / AI app builders
+  dev: string;   // DEV (Plan): LLM / coding agent (Cursor, Claude Code, Copilot, Aider)
+  create: string; // CREATE (Brief): Creative AI tools (Suno, Midjourney, ElevenLabs, Runway)
+}
+
 export interface ProjectState {
   identity: ProjectIdentity;
   understanding: string;
   messages: ChatMessage[];
   requirements: EstablishedRequirements;
-  buildPrompt: string;
+  canonicalDefinition?: CanonicalProjectDefinition;
+  buildPrompt: string; // The canonical Master Prompt / active projected prompt
+  activeTargetMode?: TargetOutputMode;
+  targetProjections?: TargetProjections;
+  isPromptAchieved: boolean;
+  masterPromptStatus: "discovering" | "defining" | "readiness_withheld" | "prompt_achieved" | "refining_change";
+  readinessChecks?: ReadinessDimensionCheck[];
+  downstreamRepresentation?: DownstreamProjectRepresentation;
   feedbackHistory: FeedbackIteration[];
 }
 

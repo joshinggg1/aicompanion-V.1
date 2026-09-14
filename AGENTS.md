@@ -1,204 +1,218 @@
-# Developer Brief — AI Studio Project Orchestrator
+# Developer Brief — Living Master Prompt System
 
-## Objective
+## Core Product Definition
 
-Strip the product back to its actual purpose:
+Build a conversational prompt-generation system whose primary purpose is to help a user progressively develop, refine, validate, and finalize an optimized master prompt for an AI software project.
 
-A conversational project manager that helps a user turn an idea into a finished build prompt for Google AI Studio — and stays with that same project across its entire build lifecycle.
+The conversation is the working environment. The master prompt is the evolving specification produced from that conversation.
 
-The user should not have to manage a workflow, analyze dashboards, allocate credits, or perform prompt engineering.
-
-## Product Definition
-
-> **Conversation + persistent understanding + targeted intelligence → Build Prompt.**
-> 
-> The user never needs to see or manage any of that machinery. They just talk to the PM.
-> 
-> **The important word isn't really prompt. It's continuity.**
+The system must not behave as a generic chatbot that simply waits for a request and generates a build prompt. It must maintain continuity across the conversation and continuously incorporate accepted project decisions into the current master prompt.
 
 ---
 
-## Core Lifecycle: The Build Loop
+## 1. Living Master Prompt
 
-This is not a tool you use for one quick idea and throw away. It is built around an ongoing project that may take a week or longer to construct and iterate in Google AI Studio.
+Maintain one canonical, evolving master prompt for the current project.
 
+As the conversation progresses:
+- New accepted requirements are incorporated.
+- Existing requirements are refined when the user changes them.
+- Rejected requirements are not retained as active requirements.
+- Superseded decisions are replaced by their latest accepted version.
+- Earlier generated prompts are not treated as the source of truth.
+- The latest canonical project definition is always authoritative.
+
+The master prompt should represent the current state of the project, not merely summarize the original request.
+
+---
+
+## 2. Conversation Lifecycle (5 Stages)
+
+Use the following lifecycle:
+
+1. **UNDERSTAND**: Establish what the user is actually trying to create.
+2. **EXPLORE**: Identify missing workflows, mechanics, constraints, dependencies, capabilities, and consequential decisions.
+3. **DEFINE**: Continuously update the canonical project definition and living master prompt as decisions are accepted.
+4. **READINESS GATE**: Determine whether the current project definition is sufficiently complete and internally consistent to produce an implementation prompt.
+5. **GENERATE**: When the project is ready, produce the implementation prompt from the current master prompt.
+
+These stages describe the reasoning process, not separate projects or conversations.
+
+---
+
+## 3. Readiness is a Quality Gate
+
+Do not generate an implementation prompt merely because the user has described an interesting idea.
+
+Before generation, verify:
+- Core purpose is understood.
+- Primary user workflow is defined.
+- Inputs and outputs are known.
+- Important capabilities are explicitly established.
+- Consequential architectural decisions are resolved or deliberately chosen for the prototype.
+- Important ambiguities have been addressed.
+- Accepted decisions are internally consistent.
+- No previously accepted requirement has been lost.
+
+If these conditions are not met, withhold the implementation prompt and continue the conversation with targeted questions.
+
+A blank implementation-prompt area when the project is not ready is correct behavior.
+
+---
+
+## 4. Scope Change and Continuity
+
+When the user introduces a new requirement, determine whether it:
+- Extends an existing workflow.
+- Creates an alternative workflow.
+- Changes the project's core identity.
+- Introduces a consequential architectural decision.
+- Supersedes an existing requirement.
+
+Do not silently append major changes.
+
+If a change affects the project definition, incorporate it into the canonical state before continuing.
+
+Never revert to an earlier project definition simply because it is easier to describe or generate.
+
+---
+
+## 5. Master Prompt Achieved
+
+The system should support a deliberate state in which the user can recognize that the current master prompt has reached the required level of completeness.
+
+**Prompt Achieved** means the current master prompt represents the agreed project definition and has passed the readiness and consistency checks.
+
+This is a state of the evolving specification, not a new project.
+
+If the user subsequently changes a consequential requirement, the master prompt must be updated and the project may leave the achieved state until it is validated again.
+
+---
+
+## 6. Target-Specific Projections (BUILD / DEV / CREATE)
+
+The system has three interaction/output modes, because the target AI creation environment changes the language, structure, and level of instruction required:
+
+| Mode | Target | Internal Distinction | What the output needs to be |
+|---|---|---|---|
+| **BUILD** | Google AI Studio / AI app builders | **Detail** ("Build this application") | A detailed implementation/build prompt: architecture, UI, behavior, data, technical constraints, etc. |
+| **DEV** | LLM / coding agent (Cursor, Claude Code, Copilot, Aider) | **Plan** ("Develop this software/system") | A developer-oriented specification: technical plan, implementation instructions, files, APIs, code behavior, testing, constraints. |
+| **CREATE** | Creative AI tools such as Suno, Midjourney, ElevenLabs | **Brief** ("Create this creative output") | A creative-generation brief: style, content, parameters, creative direction, structure, and tool-specific language. |
+
+### Internal Distinction: Detail / Plan / Brief
+- **Build** → Build this application.
+- **Dev** → Develop this software/system.
+- **Brief** → Create this creative output.
+
+### Architectural Principle: Separation of Project Definition from Output Format
+**The system must separate project definition from output format. The canonical master prompt describes what the user wants to create. Target-specific generation determines how that intent must be expressed for the selected creation environment.**
+
+Conceptually:
 ```
-Start project
-    ↓
-Understand what we're building
-    ↓
-Develop Build Prompt
-    ↓
-Copy to AI Studio
-    ↓
-Build / test in AI Studio
-    ↓
-Come back with what happened
-    ↓
-Orchestrator understands the existing project + new feedback
-    ↓
-Target only what needs changing
-    ↓
-Updated Build Prompt
-    ↓
-Back to AI Studio (repeat until finished)
-```
-
-The user builds something in AI Studio, observes what happened, returns to the Orchestrator, explains what happened, and the Orchestrator incorporates that feedback into the same ongoing project.
-
----
-
-## 1. Conversation — Primary Interface
-
-This is the main product.
-
-The user speaks naturally about an idea, a problem, or feedback from AI Studio.
-
-The conversational LLM should:
-- Understand what the user actually means.
-- Ask useful questions when necessary.
-- Challenge weak assumptions.
-- Investigate existing products and approaches.
-- Identify genuine opportunities or gaps.
-- Discuss findings with the user.
-- Progressively establish what should actually be built.
-- Handle subsequent iterations: *"I know where we are with this project. What's changed?"*
-
-### Introductory Instruction:
-> *"Talk naturally about what you want to build. I'll help you understand the problem, investigate what already exists, identify opportunities, and develop the build prompt."*
-
-Keep the existing Try suggestions because they help the user begin.
-Do not turn the conversation into a form or wizard.
-
----
-
-## 2. Build Prompt — The Product's Output
-
-The right-hand panel is the important secondary surface.
-
-It contains the current build prompt being developed from the conversation.
-
-Before enough information exists:
-- **No build prompt yet.**
-- *Continue the conversation to develop the project.*
-
-As understanding develops, the prompt is progressively synthesized and refined.
-
-When the user says:
-> *"Okay. Build this"*
-
-The system produces the best current version of the build prompt.
-
-When the user returns with feedback:
-- *"The auth works, but data import is broken."*
-- *"AI Studio changed this part, but now the dashboard isn't behaving correctly."*
-- *"Actually, I want this particular workflow to work differently."*
-
-The system updates only the relevant sections of the Build Prompt or provides a targeted resolution prompt for AI Studio without starting over.
-
-Provide:
-- **Copy Prompt for AI Studio**
-- **Open Google AI Studio ↗** (`https://ai.studio/build`)
-
-The user manually copies the prompt into AI Studio and builds there.
-Do not pretend to directly control AI Studio if the application does not actually have that capability.
-
----
-
-## 3. Intelligence Efficiency / Project Continuity (Core Developer Rule)
-
-Once the user and conversational brain establish what is being built, treat that understanding as persistent project context across days or weeks.
-
-- **Do not repeatedly regenerate full analyses, research, architecture, or build prompts when nothing relevant has changed.**
-- When the user introduces a new requirement, correction, question, or change, **identify precisely what is affected and reason specifically about that change. Preserve everything else that remains valid.**
-- **Use deeper/high-intelligence reasoning when it is actually valuable** — for example, resolving ambiguity, evaluating a significant architectural change, investigating an unknown market or technical issue, or reconciling conflicting requirements.
-- **For straightforward continuation**, use the already-established project knowledge rather than starting from scratch.
-- The Build Prompt should therefore behave as an **evolving project artifact**, not a completely regenerated document after every message.
-
-> **Principle: Establish once, preserve what is known, investigate what changed, modify precisely.**
-> 
-> The goal is not to maximize the amount of intelligence used. The goal is to maximize the value obtained from the intelligence available.
-
----
-
-## 4. No Pre-Populated Knowledge
-
-A new project must actually be new.
-
-- Do not hard-code example research such as *"92% High Opportunity Wedge"* or pre-existing Salesforce/ServiceNow analysis.
-- Do not present personas, market gaps, competitive claims, architectural decisions, or test results until they have actually been established.
-- The initial workspace should feel like an intelligent blank workspace, not a project that has already been analyzed.
-
----
-
-## 5. Remove the Dashboard
-
-No visible Database / Statistics section.
-Do not display:
-- Market Gap Viability scores
-- Target Persona cards
-- Unfair Advantage cards
-- Competitor dashboards
-- Commercial viability ratings
-- Credit allocations or model allocation plans
-- Project statistics, research tabs, ideas tabs, projects tabs, tests tabs, results tabs
-
-These are not necessary for the user's interaction.
-If research produces useful information, it should appear naturally in the conversation.
-
----
-
-## 6. The Product Test
-
-The implementation succeeds if a user can:
-1. Start with a rough idea.
-2. Talk naturally about it.
-3. Have the system investigate and challenge the idea.
-4. Reach an agreed understanding of what is worth building.
-5. Receive a coherent build prompt.
-6. Copy that prompt into Google AI Studio and build.
-7. Return to the Orchestrator with what happened in AI Studio (e.g. "auth works, but data import is broken").
-8. Have the Orchestrator retain context, diagnose the change, and produce a targeted update.
-9. Copy and iterate in AI Studio until the project is complete.
-
-Nothing else needs to be proven in the first version.
-
----
-
-## 7. Persistent Project Model & Continuity Architecture
-
-### Core Mental Model
-This application is a persistent project environment, similar in mental model to opening a software project in an IDE.
-The user is not chatting with a generic AI. The user is working on **ONE ongoing project**.
-The conversational PM is the interface through which the user works on that project.
-
-Internally structured as:
-```
-PROJECT
-  ├── project identity (id, title, timestamps)
-  ├── accumulated understanding
-  ├── conversation / history
-  ├── decisions and established requirements (architecture, stack, data models, non-goals)
-  ├── current Build Prompt (living implementation specification for Google AI Studio)
-  └── latest feedback / change state (AI Studio iteration logs)
+Conversation
+↓
+Living Master Prompt (Canonical Specification)
+↓
+Select Creation Target
+↓
+BUILD / DEV / CREATIVE BRIEF
+↓
+Target-specific optimized output
 ```
 
-### The Critical "Sniper" Principle
-Continuity is more important than prompt generation.
-The system must NOT behave like:
-`User message → regenerate everything from scratch`
+The master prompt remains the same underlying project definition, but the system creates a target-specific projection of that master prompt.
 
-It must behave like:
-`Existing project state + New information → Determine delta → Apply targeted change → Updated project state`
+---
 
-> **ESTABLISH ONCE.**  
-> **PRESERVE WHAT IS KNOWN.**  
-> **INVESTIGATE WHAT CHANGED.**  
-> **MODIFY PRECISELY.**
+## 7. Downstream Project Representation
 
-### Targeted Iteration & Significant Changes
-- **Targeted Refinement**: Change the smallest valid set of project decisions necessary to keep the whole project coherent.
-- **Handling AI Studio Feedback**: (e.g. *"The login works, but data import is broken"*, *"AI Studio changed the dashboard and now export is broken"*). Retain working components, isolate the problem area, and update only the relevant parts of the specification.
-- **Major Architectural Shifts**: If the user makes a significant pivot (e.g. switching from local storage to a hosted cloud database), identify which decisions depend on the old model, preserve unaffected decisions, revise dependent architecture, and maintain internal consistency without creating contradictory stacking.
-- **No Project Reset**: The active project remains authoritative across browser sessions and days until the user deliberately starts a new project.
+Once a master prompt is achieved, it may be used to produce a structured representation of the intended software project, such as:
+- Project architecture.
+- Repository structure (file and folder tree).
+- Component or module relationships.
+- Implementation plan.
+
+This representation must be derived from the achieved master prompt.
+
+It must never invent project requirements that are absent from the canonical definition.
+
+A future version may connect this representation to a live GitHub repository, allowing the repository structure to evolve alongside the master prompt. Live GitHub integration is not a required V1 capability.
+
+---
+
+## 8. Anti-Hallucination
+
+Never fill gaps in the project definition with generic software architecture.
+
+Do not invent:
+- CRUD entities.
+- ItemRecord-style generic models.
+- Storage systems.
+- Authentication.
+- APIs.
+- Database schemas.
+- UI controls.
+- Workflows.
+- Features.
+
+unless they are required by the established project definition or explicitly chosen by the user.
+
+When information is genuinely consequential and missing, ask for it rather than inventing it.
+
+---
+
+## 9. Pre-Generation Consistency Check
+
+Immediately before producing an implementation prompt, reconstruct the current canonical project definition.
+
+Verify that the generated prompt:
+1. Contains all currently accepted requirements.
+2. Reflects the latest decisions.
+3. Excludes superseded or rejected requirements.
+4. Preserves all established workflows.
+5. Does not regress to an earlier project version.
+6. Does not introduce unsupported architecture.
+
+The implementation prompt is a derived output of the master prompt, not a fresh interpretation of the conversation.
+
+---
+
+## 10. Core Principle
+
+The system's job is not simply to produce prompts.
+
+Its job is to help the user progressively create a correct, complete, current, and internally consistent master prompt.
+
+The quality of the system is therefore measured not only by the quality of the final implementation prompt, but by its ability to:
+
+`understand → retain → refine → reconcile → validate → finalize`
+
+the user's project without losing decisions, inventing requirements, or reverting to earlier versions.
+
+- The conversation develops the specification.
+- The master prompt is the canonical specification.
+- The target output (BUILD / DEV / CREATE) is the derived projection.
+- The repository/project representation is a downstream artifact.
+
+---
+
+## 11. Operational Guidelines
+
+### Build Loop
+1. Start project
+2. Understand what we're building
+3. Develop Master Prompt & verify Readiness Gate
+4. Generate Implementation Prompt for AI Studio
+5. Copy to AI Studio (`https://ai.studio/build`)
+6. Build / test in AI Studio
+7. Return with feedback / observation
+8. Orchestrator retains project continuity & targets only what changed
+9. Repeat until Master Prompt Achieved & project complete
+
+### Principle: Sniper Continuity
+- **ESTABLISH ONCE.**
+- **PRESERVE WHAT IS KNOWN.**
+- **INVESTIGATE WHAT CHANGED.**
+- **MODIFY PRECISELY.**
+
 

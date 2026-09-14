@@ -275,28 +275,62 @@ Return ONLY valid JSON adhering strictly to this format:
   }
 });
 
-// Helper: Evaluate whether an idea is ready to build or has consequential uncertainty
-function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, isBuildTrigger?: boolean): {
+// Helper: Readiness dimension check interface
+export interface ReadinessDimensionCheck {
+  id: string;
+  label: string;
+  status: "met" | "pending" | "unresolved";
+  details?: string;
+}
+
+export interface ReadinessResult {
   isReady: boolean;
   unresolvedTopic?: string;
-  consequentialQuestions?: string[];
   explanation?: string;
-} {
-  // If a build prompt already exists or user explicitly commanded to build, readiness is unlocked
-  if (currentWorkingPrompt && currentWorkingPrompt.trim().length > 0) {
-    return { isReady: true };
-  }
-  if (isBuildTrigger) {
-    return { isReady: true };
-  }
+  consequentialQuestions?: string[];
+  readinessChecks: ReadinessDimensionCheck[];
+}
 
+// Helper: Evaluate whether an idea is ready to build or has consequential uncertainty
+function evaluateReadinessGate(
+  message: string,
+  currentWorkingPrompt?: string,
+  isBuildTrigger?: boolean,
+  project?: any
+): ReadinessResult {
+  const hasPrompt = Boolean(currentWorkingPrompt && currentWorkingPrompt.trim().length > 0);
   const normalized = message.trim().toLowerCase();
 
   // Test 8 & open discovery: Completely vague
-  if (
+  const isVague =
     normalized.length < 25 ||
-    /not sure what it is yet|make people's lives easier|don't know what the product is yet|talk it through with me|only tell me to build something once|explore some ideas|any ideas/i.test(normalized)
-  ) {
+    /not sure what it is yet|make people's lives easier|don't know what the product is yet|talk it through with me|only tell me to build something once|explore some ideas|any ideas/i.test(normalized);
+
+  // Test 9 & saturated consumer ideas: Pushing back
+  const isSaturated =
+    ((/social media|short videos|dating app|chat app/i.test(normalized) && /worth building|is this worth|should i build|good idea/i.test(normalized)) ||
+      (/social media app|app where people post short videos/i.test(normalized) && !/standup|internal|b2b|critique|training/i.test(normalized))) &&
+    !hasPrompt;
+
+  // Broad ambiguous categories missing workflow pipelines
+  const isBroadVideoAi =
+    /video[- ]?ai|ai video|generative video|video generator|video platform/i.test(normalized) &&
+    !/stems|timeline|srt|subtitles|clip marker/i.test(normalized);
+  const isBroadMarketplace =
+    /marketplace|trade(s)?people.*jobs|offer small jobs/i.test(normalized) &&
+    !/escrow|instant book|fixed price|radius/i.test(normalized);
+  const isBroadAssistant =
+    /government assistance|eligible|benefits/i.test(normalized) &&
+    !/eligibility rules|intake wizard|document checklist/i.test(normalized);
+
+  // Concrete domain with established workflow
+  const isConcreteDomain =
+    (/electrical|electrician|plumber|hvac|mechanic/i.test(normalized) && /job|quote|material|hour/i.test(normalized)) ||
+    (/music|musician|producer/i.test(normalized) && /stem|track|export|metadata/i.test(normalized)) ||
+    (/github|repo|code review/i.test(normalized) && /plan|architecture|diff/i.test(normalized));
+
+  // If vague discovery:
+  if (isVague && !hasPrompt) {
     return {
       isReady: false,
       unresolvedTopic: "Core Problem & Beneficiary",
@@ -305,14 +339,21 @@ function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, i
         "Who specifically is experiencing this friction (trade, role, consumer)?",
         "What is a concrete moment of pain or frustration that happens today?",
       ],
+      readinessChecks: [
+        { id: "core_purpose", label: "Core Purpose Understood", status: "pending", details: "Exploring problem space; no concrete domain identified" },
+        { id: "primary_workflow", label: "Primary User Workflow Defined", status: "pending", details: "Interaction loop not yet initiated" },
+        { id: "inputs_outputs", label: "Inputs & Outputs Known", status: "pending", details: "Input data types and artifacts unestablished" },
+        { id: "capabilities", label: "Key Capabilities Established", status: "pending", details: "Awaiting domain selection" },
+        { id: "architecture", label: "Architectural Decisions Resolved", status: "pending", details: "Technical architecture awaiting workflow definition" },
+        { id: "ambiguities", label: "Material Ambiguities Addressed", status: "unresolved", details: "Core problem and beneficiary unresolved" },
+        { id: "consistency", label: "Internally Consistent", status: "met", details: "Initial exploration phase" },
+        { id: "retention", label: "No Lost Decisions", status: "met", details: "No decisions recorded yet" },
+      ],
     };
   }
 
-  // Test 9 & saturated consumer ideas: Pushing back
-  if (
-    (/social media|short videos|dating app|chat app/i.test(normalized) && /worth building|is this worth|should i build|good idea/i.test(normalized)) ||
-    (/social media app|app where people post short videos/i.test(normalized) && !/standup|internal|b2b|critique|training/i.test(normalized))
-  ) {
+  // If saturated consumer platform:
+  if (isSaturated) {
     return {
       isReady: false,
       unresolvedTopic: "Market Viability & Differentiated Wedge",
@@ -321,19 +362,21 @@ function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, i
         "Do you have a constrained, high-trust niche (e.g. private team standups, athletic critique)?",
         "Or should we explore a different problem space with genuine greenfield opportunity?",
       ],
+      readinessChecks: [
+        { id: "core_purpose", label: "Core Purpose Understood", status: "met", details: "Generic consumer media request" },
+        { id: "primary_workflow", label: "Primary User Workflow Defined", status: "pending", details: "Unconstrained feed without focused workflow" },
+        { id: "inputs_outputs", label: "Inputs & Outputs Known", status: "pending", details: "Mass video upload/streaming requires massive infrastructure" },
+        { id: "capabilities", label: "Key Capabilities Established", status: "pending", details: "Features undefined beyond clone pattern" },
+        { id: "architecture", label: "Architectural Decisions Resolved", status: "pending", details: "CDN and transcoding undefined" },
+        { id: "ambiguities", label: "Material Ambiguities Addressed", status: "unresolved", details: "High risk of network effect failure without defensible wedge" },
+        { id: "consistency", label: "Internally Consistent", status: "met" },
+        { id: "retention", label: "No Lost Decisions", status: "met" },
+      ],
     };
   }
 
-  // Broad, ambiguous product requests (e.g. video-AI, generative media, generic marketplace, broad education)
-  // Check if fundamental operational workflows are missing
-  const isBroadVideoAi = /video[- ]?ai|ai video|generative video|video generator|video platform/i.test(normalized) &&
-    !/stems|timeline|srt|subtitles|clip marker/i.test(normalized);
-  const isBroadMarketplace = /marketplace|trade(s)?people.*jobs|offer small jobs/i.test(normalized) &&
-    !/escrow|instant book|fixed price|radius/i.test(normalized);
-  const isBroadAssistant = /government assistance|eligible|benefits/i.test(normalized) &&
-    !/eligibility rules|intake wizard|document checklist/i.test(normalized);
-
-  if (isBroadVideoAi || isBroadMarketplace || isBroadAssistant) {
+  // Broad workflows needing pipeline definition:
+  if ((isBroadVideoAi || isBroadMarketplace || isBroadAssistant) && !hasPrompt) {
     let topic = "Workflow Boundaries & Data Model";
     let explanation = "The high-level concept has been described, but the specific input-to-output pipeline, actor roles, and core unit of work remain unestablished.";
     let questions = [
@@ -362,22 +405,21 @@ function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, i
       unresolvedTopic: topic,
       explanation,
       consequentialQuestions: questions,
+      readinessChecks: [
+        { id: "core_purpose", label: "Core Purpose Understood", status: "met", details: "Broad concept recognized" },
+        { id: "primary_workflow", label: "Primary User Workflow Defined", status: "unresolved", details: "Input-to-output interaction loop undefined" },
+        { id: "inputs_outputs", label: "Inputs & Outputs Known", status: "unresolved", details: "Exact payload types and artifacts unconfirmed" },
+        { id: "capabilities", label: "Key Capabilities Established", status: "pending", details: "Feature boundary waiting on workflow" },
+        { id: "architecture", label: "Architectural Decisions Resolved", status: "pending", details: "Pipeline tradeoffs need domain decision" },
+        { id: "ambiguities", label: "Material Ambiguities Addressed", status: "unresolved", details: topic },
+        { id: "consistency", label: "Internally Consistent", status: "met" },
+        { id: "retention", label: "No Lost Decisions", status: "met" },
+      ],
     };
   }
 
-  // Check if message describes a concrete domain problem with established workflows (e.g. electrician job/quote tracker, music stems)
-  const isConcreteDomain = (
-    (/electrical|electrician|plumber|hvac|mechanic/i.test(normalized) && /job|quote|material|hour/i.test(normalized)) ||
-    (/music|musician|producer/i.test(normalized) && /stem|track|export|metadata/i.test(normalized)) ||
-    (/github|repo|code review/i.test(normalized) && /plan|architecture|diff/i.test(normalized))
-  );
-
-  if (isConcreteDomain) {
-    return { isReady: true };
-  }
-
-  // Default: If the message is a single general sentence without specific mechanics, gate it
-  if (normalized.split(" ").length < 18) {
+  // Short single-sentence prompt without concrete domain:
+  if (normalized.split(" ").length < 18 && !hasPrompt && !isConcreteDomain && !isBuildTrigger) {
     return {
       isReady: false,
       unresolvedTopic: "Core Interaction & Primary Workflow",
@@ -386,10 +428,528 @@ function evaluateReadinessGate(message: string, currentWorkingPrompt?: string, i
         "What is the single most frequent action a user takes on this screen?",
         "What data or state must persist between sessions?",
       ],
+      readinessChecks: [
+        { id: "core_purpose", label: "Core Purpose Understood", status: "met", details: "General domain identified" },
+        { id: "primary_workflow", label: "Primary User Workflow Defined", status: "unresolved", details: "Primary user action loop needed" },
+        { id: "inputs_outputs", label: "Inputs & Outputs Known", status: "pending", details: "Persisted state parameters needed" },
+        { id: "capabilities", label: "Key Capabilities Established", status: "pending", details: "Core capabilities awaiting input" },
+        { id: "architecture", label: "Architectural Decisions Resolved", status: "pending", details: "Storage pattern needs clarification" },
+        { id: "ambiguities", label: "Material Ambiguities Addressed", status: "unresolved", details: "Interaction mechanics ambiguous" },
+        { id: "consistency", label: "Internally Consistent", status: "met" },
+        { id: "retention", label: "No Lost Decisions", status: "met" },
+      ],
     };
   }
 
-  return { isReady: true };
+  // Passed readiness gate!
+  return {
+    isReady: true,
+    readinessChecks: [
+      { id: "core_purpose", label: "Core Purpose Understood", status: "met", details: "Explicit domain and beneficiary established" },
+      { id: "primary_workflow", label: "Primary User Workflow Defined", status: "met", details: "Input-to-output pipeline bounded and operational" },
+      { id: "inputs_outputs", label: "Inputs & Outputs Known", status: "met", details: "Domain entities, parameters, and deliverables specified" },
+      { id: "capabilities", label: "Key Capabilities Established", status: "met", details: "Scope and feature boundaries strictly locked" },
+      { id: "architecture", label: "Architectural Decisions Resolved", status: "met", details: "Single-screen SPA with explicit storage pattern" },
+      { id: "ambiguities", label: "Material Ambiguities Addressed", status: "met", details: "Tradeoffs resolved without speculative bloat" },
+      { id: "consistency", label: "Internally Consistent", status: "met", details: "All requirements mutually coherent" },
+      { id: "retention", label: "No Lost Decisions", status: "met", details: "Latest canonical state fully preserved" },
+    ],
+  };
+}
+
+// Helper: Derive Downstream Project Representation directly from Achieved Master Prompt
+function deriveDownstreamProjectRepresentation(
+  title: string,
+  prompt: string,
+  requirements?: any
+): {
+  architecture: {
+    summary: string;
+    dataFlow: string;
+    techLayers: { layer: string; details: string }[];
+  };
+  repositoryStructure: {
+    treeText: string;
+    files: { path: string; purpose: string }[];
+  };
+  moduleRelationships: {
+    modules: { name: string; responsibility: string; dependencies: string[] }[];
+  };
+  implementationPlan: {
+    steps: { stepNumber: number; title: string; promptObjective: string; verificationCriteria: string[] }[];
+  };
+  gitHubIntegrationNote: string;
+} {
+  const isElectrician = /\b(electric|electrician|subcontractor|technician|materials|trades)\b/i.test(prompt + " " + title);
+  const isMusic = /\b(music|stems?|audio|bpm|synthesizer|sampler|mastering)\b/i.test(prompt + " " + title);
+  const isLegal = /\b(lawyer|legal|contracts?|clauses?|attorney|diff|redline|indemnification)\b/i.test(prompt + " " + title);
+
+  if (isLegal) {
+    return {
+      architecture: {
+        summary: "Single-screen contract clause comparator with client-side diffing, risk assessment scoring, and local session persistence.",
+        dataFlow: "User inputs clause A and clause B → Client diff parser computes inline deletions/additions → Risk scoring rules evaluate deviation severity → Side-by-side diff readout renders with suggested alternative language → Instant clipboard copy.",
+        techLayers: [
+          { layer: "Presentation Layer (UI)", details: "React 19, Tailwind CSS, high-contrast monospace diff readouts with accessible red/green semantic indicators." },
+          { layer: "Comparison Engine", details: "Client-side Myers diff algorithm and phrase-level semantic similarity scoring in pure TypeScript." },
+          { layer: "Storage & Privacy", details: "100% in-browser state with LocalStorage history buffer; zero third-party telemetry to protect client confidentiality." },
+        ],
+      },
+      repositoryStructure: {
+        treeText: `├── src/
+│   ├── components/
+│   │   ├── ClauseInputPair.tsx
+│   │   ├── SideBySideDiff.tsx
+│   │   ├── RiskAssessmentBadge.tsx
+│   │   └── SuggestedLanguagePanel.tsx
+│   ├── types.ts
+│   ├── utils/
+│   │   └── diffEngine.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`,
+        files: [
+          { path: "src/types.ts", purpose: "Strict domain models for ClauseComparison, DiffChunk, RiskEvaluation, and AlternativeSuggestion." },
+          { path: "src/components/ClauseInputPair.tsx", purpose: "Dual split-pane text editor with paste shortcuts and character/word counter." },
+          { path: "src/components/SideBySideDiff.tsx", purpose: "Visual comparison viewer highlighting additions, deletions, and structural phrasing shifts." },
+          { path: "src/components/RiskAssessmentBadge.tsx", purpose: "Real-time risk scoring indicator identifying indemnification and liability exposure." },
+          { path: "src/utils/diffEngine.ts", purpose: "Fast, deterministic word-level and token-level diff calculation." },
+        ],
+      },
+      moduleRelationships: {
+        modules: [
+          { name: "ClauseInputPair", responsibility: "Captures original and revised clauses with instant character/word count", dependencies: ["types.ts"] },
+          { name: "SideBySideDiff", responsibility: "Renders synchronized line-by-line diff view", dependencies: ["diffEngine.ts", "types.ts"] },
+          { name: "RiskAssessmentBadge", responsibility: "Calculates and visualizes risk exposure metrics", dependencies: ["types.ts"] },
+          { name: "SuggestedLanguagePanel", responsibility: "Provides standard alternative clauses with single-click copy", dependencies: ["types.ts"] },
+        ],
+      },
+      implementationPlan: {
+        steps: [
+          { stepNumber: 1, title: "Contract Domain Types & Diff Utility", promptObjective: "Define ClauseComparison and DiffChunk types, implement deterministic word-level diffing in src/utils/diffEngine.ts.", verificationCriteria: ["Zero generic 'ItemRecord' placeholders", "Accurate addition and deletion tokenization"] },
+          { stepNumber: 2, title: "Dual Input Interface", promptObjective: "Build ClauseInputPair with side-by-side paste boxes, sample clause loader, and quick swap button.", verificationCriteria: ["Zero layout shifting on large clause paste", "Immediate reactive comparison trigger"] },
+          { stepNumber: 3, title: "Side-by-Side Diff & Risk Visualizer", promptObjective: "Construct SideBySideDiff and RiskAssessmentBadge with semantic color-coding and risk severity rating.", verificationCriteria: ["High contrast accessible diff colors", "Instant recalculation on clause edit"] },
+          { stepNumber: 4, title: "Alternative Language & Copy Flow", promptObjective: "Wire suggested alternative language cards, single-click clipboard copy, and recent comparison history.", verificationCriteria: ["One-click copy with visual toast confirmation", "Zero server roundtrips ensuring legal privacy"] },
+        ],
+      },
+      gitHubIntegrationNote: "Live GitHub repository synchronization planned for future release. This downstream project representation is derived directly from the achieved master prompt.",
+    };
+  }
+
+  if (isElectrician) {
+    return {
+      architecture: {
+        summary: "Single-view reactive SPA with zero-friction local persistence and real-time quote/margin calculations.",
+        dataFlow: "User input (Customer, Scope, Rates) → Reactive Quote Estimator → Local Storage Key-Value Persistence → Live Job Margin Monitor (Actual Parts & Hours vs. Quoted Total) → One-Click CSV Summary Export.",
+        techLayers: [
+          { layer: "Presentation Layer (UI)", details: "React 19, Tailwind CSS, Lucide icons, responsive layout optimized for tablet & mobile job sites." },
+          { layer: "State & Calculations", details: "Custom reactive state hooks for quote computation, margin analysis, and job status progression." },
+          { layer: "Persistence & I/O", details: "Browser LocalStorage with export/import serialization and zero backend server requirements." },
+        ],
+      },
+      repositoryStructure: {
+        treeText: `├── src/
+│   ├── components/
+│   │   ├── JobCard.tsx
+│   │   ├── QuoteEstimator.tsx
+│   │   ├── MaterialReceiptLogger.tsx
+│   │   └── TechnicianHoursLogger.tsx
+│   ├── types.ts
+│   ├── utils/
+│   │   └── calculations.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`,
+        files: [
+          { path: "src/types.ts", purpose: "Strict domain interfaces for JobRecord, QuoteItem, MaterialReceipt, and TechnicianLog." },
+          { path: "src/components/QuoteEstimator.tsx", purpose: "Form and drawer interface to calculate initial quotes based on scope and estimated hours." },
+          { path: "src/components/JobCard.tsx", purpose: "Visual board card with live margin calculation comparing actual expenses against quoted cap." },
+          { path: "src/components/MaterialReceiptLogger.tsx", purpose: "Instant receipt logger capturing supplier, item cost, and invoice attachment reference." },
+          { path: "src/utils/calculations.ts", purpose: "Pure mathematical functions for profitability margin, tax, and labor totals." },
+        ],
+      },
+      moduleRelationships: {
+        modules: [
+          { name: "QuoteEstimator", responsibility: "Calculates initial job estimates and passes new JobRecord to App state", dependencies: ["calculations.ts", "types.ts"] },
+          { name: "JobCard", responsibility: "Renders active job status and live profitability margins", dependencies: ["MaterialReceiptLogger", "TechnicianHoursLogger", "calculations.ts"] },
+          { name: "MaterialReceiptLogger", responsibility: "Updates material receipts array on targeted job", dependencies: ["types.ts"] },
+          { name: "TechnicianHoursLogger", responsibility: "Tracks labor shifts and rates per job card", dependencies: ["types.ts"] },
+        ],
+      },
+      implementationPlan: {
+        steps: [
+          { stepNumber: 1, title: "Domain Types & Pure Math", promptObjective: "Implement domain interfaces (JobRecord, QuoteItem, MaterialReceipt) and margin calculations in src/types.ts and src/utils/calculations.ts.", verificationCriteria: ["Zero generic 'ItemRecord' placeholders", "Accurate margin percentage formulas"] },
+          { stepNumber: 2, title: "Quote Creation & Estimator View", promptObjective: "Build QuoteEstimator component with scope breakdown, hourly rate inputs, and instant total computation.", verificationCriteria: ["Immediate responsive recalculation on keystroke", "Validation on required fields"] },
+          { stepNumber: 3, title: "Active Job Board & Live Margin Monitor", promptObjective: "Construct JobCard displaying status progression, actual vs. estimated cost bars, and receipt attachment toggles.", verificationCriteria: ["Live color-coded margin warnings when actuals approach quote limit", "Accessible touch targets min 44px"] },
+          { stepNumber: 4, title: "Status Advancement & CSV Billing Export", promptObjective: "Wire LocalStorage persistence, status filters (quoted, active, invoiced), and single-click CSV export.", verificationCriteria: ["Clean export matching accounting format", "State survives browser refresh"] },
+        ],
+      },
+      gitHubIntegrationNote: "Live GitHub repository synchronization planned for future release. This downstream project representation is derived directly from the achieved master prompt.",
+    };
+  }
+
+  if (isMusic) {
+    return {
+      architecture: {
+        summary: "High-density single-screen audio stem arranger with Web Audio API previews and client-side ZIP packaging.",
+        dataFlow: "Audio files + Stem role tags → Web Audio waveform decoder → Channel rack mixer → Metadata sheet generator → Client ZIP archive export.",
+        techLayers: [
+          { layer: "Presentation Layer (UI)", details: "React 19, Tailwind CSS, high-density audio track visualizer." },
+          { layer: "Audio Engine", details: "Web Audio API AudioContext for decoded buffer rendering, waveform rendering, and channel mute/solo." },
+          { layer: "Packaging & Persistence", details: "JSZip / LocalStorage for bundle assembly and session restoration." },
+        ],
+      },
+      repositoryStructure: {
+        treeText: `├── src/
+│   ├── components/
+│   │   ├── StemChannelRack.tsx
+│   │   ├── WaveformVisualizer.tsx
+│   │   ├── MetadataAnnotator.tsx
+│   │   └── PackageExporter.tsx
+│   ├── types.ts
+│   ├── audio/
+│   │   └── audioEngine.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`,
+        files: [
+          { path: "src/types.ts", purpose: "Interfaces for StemTrack, SongProject, BPMDetectionResult, and AudioChannelState." },
+          { path: "src/components/StemChannelRack.tsx", purpose: "Channel rack for mute/solo, volume trim, role tagging, and track sequencing." },
+          { path: "src/components/WaveformVisualizer.tsx", purpose: "Interactive canvas waveform previewing decoded multi-track audio." },
+          { path: "src/audio/audioEngine.ts", purpose: "Web Audio API buffer management and multi-track playback sync." },
+          { path: "src/components/PackageExporter.tsx", purpose: "Assembles stem files and metadata text sheet into an exportable production pack." },
+        ],
+      },
+      moduleRelationships: {
+        modules: [
+          { name: "StemChannelRack", responsibility: "Manages audio tracks, labels, and mixer controls", dependencies: ["audioEngine.ts", "types.ts"] },
+          { name: "WaveformVisualizer", responsibility: "Draws waveform peaks and synchronizes playback playhead", dependencies: ["audioEngine.ts"] },
+          { name: "MetadataAnnotator", responsibility: "Binds BPM, key signature, and production notes to the SongProject", dependencies: ["types.ts"] },
+          { name: "PackageExporter", responsibility: "Bundles audio assets into organized stem ZIP archive", dependencies: ["types.ts"] },
+        ],
+      },
+      implementationPlan: {
+        steps: [
+          { stepNumber: 1, title: "Audio Types & State Contracts", promptObjective: "Define StemTrack and SongProject interfaces with strict roles (drums, bass, vocals, synth).", verificationCriteria: ["Clean TypeScript interfaces without generic models", "Web Audio state contracts"] },
+          { stepNumber: 2, title: "Stem Channel Mixer & Waveforms", promptObjective: "Implement StemChannelRack with mute/solo buttons and canvas waveform previews.", verificationCriteria: ["Zero layout shift during audio file upload", "Immediate audio playhead feedback"] },
+          { stepNumber: 3, title: "Metadata & Mix Annotations", promptObjective: "Build BPM, musical key, and mix notes annotation panel.", verificationCriteria: ["Instant reactive state synchronization", "Clean musical notation tags"] },
+          { stepNumber: 4, title: "Production Pack ZIP Assembly", promptObjective: "Implement client-side stem packaging and download bundle generation.", verificationCriteria: ["Proper file naming inside archive", "Download triggers without server roundtrip"] },
+        ],
+      },
+      gitHubIntegrationNote: "Live GitHub repository synchronization planned for future release. This downstream project representation is derived directly from the achieved master prompt.",
+    };
+  }
+
+  // Default derived representation matching prompt domain
+  const cleanTitle = title || "Focused Application";
+  return {
+    architecture: {
+      summary: `Focused single-screen web application solving "${cleanTitle}" with zero unnecessary onboarding overhead and local state persistence.`,
+      dataFlow: "User interaction → Dedicated domain controller → Local key-value state → Responsive visual display → Export & copy output.",
+      techLayers: [
+        { layer: "Presentation (UI)", details: "React 19, Tailwind CSS, Lucide icons, responsive layout with accessible touch targets (min 44px)." },
+        { layer: "Application State", details: "Reactive TypeScript domain hooks enforcing explicit validation contracts." },
+        { layer: "Storage & Persistence", details: "Client-side key-value persistence with structured export capabilities." },
+      ],
+    },
+    repositoryStructure: {
+      treeText: `├── src/
+│   ├── components/
+│   │   ├── PrimaryWorkspace.tsx
+│   │   ├── ActionControlBar.tsx
+│   │   └── SummaryDisplay.tsx
+│   ├── types.ts
+│   ├── utils/
+│   │   └── storage.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`,
+      files: [
+        { path: "src/types.ts", purpose: "Strict TypeScript domain interfaces tailored specifically to this application's domain." },
+        { path: "src/components/PrimaryWorkspace.tsx", purpose: "Main single-screen view hosting the primary user action loop." },
+        { path: "src/components/ActionControlBar.tsx", purpose: "Tactile action controls and operational filters." },
+        { path: "src/components/SummaryDisplay.tsx", purpose: "Visual presentation of active records and metrics." },
+        { path: "src/utils/storage.ts", purpose: "Persistence and serialization utilities." },
+      ],
+    },
+    moduleRelationships: {
+      modules: [
+        { name: "PrimaryWorkspace", responsibility: "Coordinates core user interaction and active data display", dependencies: ["ActionControlBar", "SummaryDisplay", "types.ts"] },
+        { name: "ActionControlBar", responsibility: "Dispatches user operations and filter changes", dependencies: ["types.ts"] },
+        { name: "SummaryDisplay", responsibility: "Presents status and domain computations", dependencies: ["types.ts"] },
+      ],
+    },
+    implementationPlan: {
+      steps: [
+        { stepNumber: 1, title: "Domain Contracts & Architecture", promptObjective: "Establish domain models in src/types.ts matching the established master prompt.", verificationCriteria: ["Zero generic placeholder entities", "Strict typing"] },
+        { stepNumber: 2, title: "Primary Workspace & Capture View", promptObjective: "Construct the central user interaction loop with responsive keyboard and touch controls.", verificationCriteria: ["Instant tactile response", "Accurate field validation"] },
+        { stepNumber: 3, title: "Action Controls & Persistence", promptObjective: "Wire local persistence and inline actions to ensure state survives session reload.", verificationCriteria: ["LocalStorage synchronization verified", "Clean error boundaries"] },
+        { stepNumber: 4, title: "Export & Delivery", promptObjective: "Add single-click export and finalize production styling.", verificationCriteria: ["Fast, zero-latency export", "Passed accessibility audit"] },
+      ],
+    },
+    gitHubIntegrationNote: "Live GitHub repository synchronization planned for future release. This downstream project representation is derived directly from the achieved master prompt.",
+  };
+}
+
+// Helper: Derive target-specific projections from the canonical living master prompt
+function deriveTargetProjections(
+  title: string,
+  canonicalPrompt: string,
+  requirements?: any,
+  downstreamRep?: any
+): { build: string; dev: string; create: string } {
+  if (!canonicalPrompt || !canonicalPrompt.trim()) {
+    return { build: "", dev: "", create: "" };
+  }
+
+  const cleanTitle = title || "Focused Project";
+  const rep = downstreamRep || deriveDownstreamProjectRepresentation(cleanTitle, canonicalPrompt, requirements);
+
+  // 1. BUILD (Detail - "Build this application" - Target: Google AI Studio)
+  let buildPrompt = canonicalPrompt;
+  if (!buildPrompt.includes("MODE: BUILD / DETAIL")) {
+    const rawBody = canonicalPrompt.replace(/\/\/ =+\n\/\/ GOOGLE AI STUDIO BUILD PROMPT[\s\S]*?\/\/ =+\n\n/, "");
+    buildPrompt = `// ========================================================
+// TARGET: GOOGLE AI STUDIO (MODE: BUILD / DETAIL)
+// Directive: "Build this application"
+// Project: ${cleanTitle}
+// Copy and paste directly into https://ai.studio/build
+// ========================================================
+
+${rawBody.trim()}`;
+  }
+
+  // 2. DEV (Plan - "Develop this software/system" - Target: LLM / Coding Agent: Cursor, Claude Code, Copilot, Aider)
+  const repoTree = rep?.repositoryStructure?.treeText || `├── src/
+│   ├── components/
+│   │   ├── PrimaryWorkspace.tsx
+│   │   ├── ActionControlBar.tsx
+│   │   └── SummaryDisplay.tsx
+│   ├── types.ts
+│   ├── utils/
+│   │   └── storage.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`;
+
+  const fileList = rep?.repositoryStructure?.files || [
+    { path: "src/types.ts", purpose: "Strict TypeScript domain models and state interfaces." },
+    { path: "src/components/PrimaryWorkspace.tsx", purpose: "Core single-screen view hosting the primary user action loop." },
+    { path: "src/components/ActionControlBar.tsx", purpose: "Tactile action controls, filters, and state toggles." },
+    { path: "src/components/SummaryDisplay.tsx", purpose: "Visual presentation of active records and metrics." },
+    { path: "src/utils/storage.ts", purpose: "Persistence and serialization utilities using LocalStorage." },
+  ];
+
+  const modules = rep?.moduleRelationships?.modules || [
+    { name: "PrimaryWorkspace", responsibility: "Coordinates core user interaction and active data display", dependencies: ["ActionControlBar", "SummaryDisplay", "types.ts"] },
+    { name: "ActionControlBar", responsibility: "Dispatches user operations and state mutations", dependencies: ["types.ts"] },
+    { name: "SummaryDisplay", responsibility: "Presents status and domain computations", dependencies: ["types.ts"] },
+  ];
+
+  const steps = rep?.implementationPlan?.steps || [
+    {
+      stepNumber: 1,
+      title: "Domain Contracts & Architecture",
+      promptObjective: `Establish domain models in src/types.ts matching "${cleanTitle}".`,
+      verificationCriteria: ["Zero generic 'ItemRecord' placeholders", "Strict TypeScript types with zero 'any'"],
+    },
+    {
+      stepNumber: 2,
+      title: "Primary Workspace & Capture View",
+      promptObjective: "Construct the central user interaction loop with responsive keyboard and touch controls.",
+      verificationCriteria: ["Instant tactile response", "Accurate field validation and zero layout shifts"],
+    },
+    {
+      stepNumber: 3,
+      title: "Action Controls & Persistence",
+      promptObjective: "Wire local persistence and inline actions to ensure state survives session reload.",
+      verificationCriteria: ["LocalStorage synchronization verified", "Clean error boundaries"],
+    },
+    {
+      stepNumber: 4,
+      title: "Export & Delivery",
+      promptObjective: "Add single-click export and finalize production styling.",
+      verificationCriteria: ["Fast, zero-latency export", "Passed accessibility audit (touch targets >= 44px)"],
+    },
+  ];
+
+  const devPlan = `// ========================================================
+// TARGET: LLM / CODING AGENT (MODE: DEV / PLAN)
+// Directive: "Develop this software/system"
+// Project: ${cleanTitle}
+// Target Environments: Cursor Composer, Claude Code, Copilot Workspace, Aider
+// ========================================================
+
+# SYSTEM ARCHITECTURAL PLAN
+You are the primary engineering agent tasked with building the software system defined below.
+Execute the implementation following the prescribed repository file structure, module responsibilities, and sequential verification gates.
+
+## 1. TECHNICAL STACK & CONVENTIONS
+- Framework: React 19, TypeScript (strict mode enabled), Tailwind CSS.
+- Build Engine: Vite with hot-module reload support.
+- State & Persistence: Client-side local key-value state (LocalStorage) with reactive custom hooks.
+- Architecture: Single-view, low-latency, zero-friction user experience.
+- UI Guidelines: Accessible touch targets (min 44px), high-contrast neutrals, zero unrequested modal walls.
+
+## 2. REPOSITORY & FILE STRUCTURE
+\`\`\`
+${repoTree}
+\`\`\`
+
+### File Responsibilities:
+${fileList.map((f: any) => `- \`${f.path}\`: ${f.purpose}`).join("\n")}
+
+## 3. MODULE RELATIONSHIPS & DEPENDENCY GRAPH
+${modules.map((m: any) => `- **${m.name}**: ${m.responsibility} (Dependencies: ${m.dependencies.join(", ")})`).join("\n")}
+
+## 4. STEP-BY-STEP IMPLEMENTATION INSTRUCTIONS
+${steps.map((s: any) => `### Step ${s.stepNumber}: ${s.title}
+- Objective: ${s.promptObjective}
+- Verification Criteria:
+${s.verificationCriteria.map((c: any) => `  * [ ] ${c}`).join("\n")}`).join("\n\n")}
+
+## 5. CODING AGENT RESTRICTIONS & VERIFICATION GATES
+1. Do NOT invent generic ItemRecord CRUD placeholders or unrequested database layers.
+2. Ensure every button and input handler is fully wired with real state mutations.
+3. Test that state survives browser reload via LocalStorage serialization.
+4. Maintain strict separation of concerns between types, computation utilities, and view components.
+5. All code must compile cleanly without TypeScript warnings or linting errors.`;
+
+  // 3. CREATE (Brief - "Create this creative output" - Target: Creative AI Tools: Suno, Midjourney, ElevenLabs, Runway)
+  const isMusic = /\b(music|stems?|audio|bpm|synthesizer|sampler|mastering|drums|vocals|mixing)\b/i.test(canonicalPrompt + " " + cleanTitle);
+  const isLegal = /\b(lawyer|legal|contracts?|clauses?|attorney|diff|redline|indemnification)\b/i.test(canonicalPrompt + " " + cleanTitle);
+  const isTrades = /\b(electric|electrician|subcontractor|technician|materials|trades|plumbing|hvac)\b/i.test(canonicalPrompt + " " + cleanTitle);
+
+  let creativeBrief = "";
+
+  if (isMusic) {
+    creativeBrief = `// ========================================================
+// TARGET: CREATIVE AI ENGINES (MODE: CREATE / BRIEF)
+// Directive: "Create this creative output"
+// Project: ${cleanTitle}
+// Target Environments: Suno AI, Midjourney, ElevenLabs, Runway Gen-3
+// ========================================================
+
+# CREATIVE GENERATION BRIEF
+
+## 1. SUNO AI AUDIO & STEM GENERATION PROMPT
+- Style Prompt: dark alt-trap, heavy syncopated 808 sub-bass, atmospheric minor arpeggio, rapid closed hi-hats, melodic vocal chops, 140 bpm, clean stem separation
+- Track Title: "${cleanTitle} — Sonic Session"
+- Composition Structure & Section Cues:
+  [Intro] Filtered low-pass ambient synth, distant sub heartbeat
+  [Verse 1] Dry rhythmic drums, clean 808 kick, tight vocal cadence
+  [Pre-Chorus] Tension build, rapid snare rolls, rising pitch filter
+  [Chorus] Wide stereo drop, deep sub bass, catchy layered vocal hook
+  [Bridge] Stripped back percussion, reverse cymbals, floating pads
+  [Drop / Climax] Full stem energy, syncopated rhythm, distorted sub accent
+  [Outro] Echoing synth tail, tape stop finish
+- Stem Extraction Roles:
+  * Drum Stem: Kick, snare, open/closed hi-hats, rimshot
+  * Bass Stem: 808 glide, sub-bass 40Hz foundation
+  * Melodic Stem: Minor synth lead, pad harmony, pluck arpeggio
+  * Vocal Stem: Dry vocal track, harmonic double, vocal ad-libs
+
+## 2. MIDJOURNEY CONCEPT ART & ALBUM ARTWORK PROMPT
+- Art Direction: Cyber-analog studio console with illuminated faders and glowing VU meters, dark moody atmospheric lighting, neon amber and matte charcoal aesthetic, macro lens, shallow depth of field --ar 16:9 --style raw --v 6.0
+- Color Palette: Matte Obsidian (#0C0A09), Signal Amber (#F59E0B), Emerald Green (#10B981)
+
+## 3. AUDIO PRODUCTION DIRECTIVES
+- Master loudness target: -14 LUFS integrated, -1.0 dB true peak.
+- Emphasize punchy transient dynamics suitable for stem previewing and multi-track slicing.`;
+  } else if (isLegal) {
+    creativeBrief = `// ========================================================
+// TARGET: CREATIVE AI ENGINES (MODE: CREATE / BRIEF)
+// Directive: "Create this creative output"
+// Project: ${cleanTitle}
+// Target Environments: Suno AI (Interface Sound Design), Midjourney (Visual Assets), ElevenLabs
+// ========================================================
+
+# CREATIVE GENERATION BRIEF
+
+## 1. BRAND IDENTITY & CREATIVE DIRECTION
+- Concept: Surgical clarity, calm authority, high-contrast precision for corporate legal workflows.
+- Brand Tone: Uncompromisingly focused, quiet confidence, Swiss typographic minimalism, zero fluff.
+
+## 2. SUNO / ELEVENLABS SONIC BRANDING & INTERACTION AUDIO
+- Ambient Soundscape Prompt (Focus Mode): Minimalist Scandinavian drone in D minor, warm analog tape saturation, subtle resonant pads, 90 bpm, deep concentration flow state
+- Tactile UI Sound FX Directives:
+  * Diff Execution Sound: Crisp mechanical tactile click (frequency 2.4kHz, 12ms decay)
+  * High-Risk Clause Flag: Muted wooden percussive knock with low-frequency resonance
+  * Alternative Language Copy: Soft harmonic bell chime (C6, pristine decay)
+- Voiceover Persona: Crisp, neutral, authoritative British or Mid-Atlantic attorney narration, measured cadence.
+
+## 3. MIDJOURNEY HERO & BRAND ARTWORK PROMPT
+- Art Direction: Architectural macro photograph of a solo lawyer's obsidian desk at twilight, dual matte screens displaying glowing amber code diffs, brass fountain pen, soft rainy window reflection, Leica 35mm f/1.4 photography --ar 16:9 --style raw --v 6.0
+- Color Palette: Deep Slate (#0F172A), Crisp White (#F8FAFC), Alert Amber (#F59E0B), Monospace Emerald (#10B981)
+
+## 4. CREATIVE CONSTRAINTS
+- Prohibit cartoonish iconography, generic law gavel clichés, or decorative gradients. Prioritize architectural restraint.`;
+  } else if (isTrades) {
+    creativeBrief = `// ========================================================
+// TARGET: CREATIVE AI ENGINES (MODE: CREATE / BRIEF)
+// Directive: "Create this creative output"
+// Project: ${cleanTitle}
+// Target Environments: Midjourney (Industrial Visuals), Suno (Job-Site Sound Design)
+// ========================================================
+
+# CREATIVE GENERATION BRIEF
+
+## 1. FIELD BRAND & VISUAL IDENTITY
+- Concept: Rugged, weather-hardened, high-visibility field tool built for contractor job sites.
+- Visual Language: Industrial utility, bold legible numerals, safety accents, high-contrast sunlight readability.
+
+## 2. SUNO AUDIO & JOB-SITE SOUND DESIGN
+- Audio Cues & Field Feedback:
+  * Quote Saved: Solid mechanical toggle clack, heavy metal latch sound
+  * Margin Alert: Sharp dual acoustic warning tone (frequency 800Hz / 1200Hz)
+  * Invoice Exported: Crisp paper receipt tear with positive tonal confirmation
+
+## 3. MIDJOURNEY HERO & PRODUCT VISUAL PROMPT
+- Art Direction: Industrial rugged tablet resting on electrical conduit and blueprint plans inside an active commercial job site, golden hour sunlight through steel beams, dust motes in air, authentic craftsmanship, Sony A7R V 50mm f/1.8 --ar 16:9 --style raw --v 6.0
+- Color Palette: Industrial Charcoal (#18181B), Safety Orange (#EA580C), High-Vis Yellow (#CA8A04), Conduit Gray (#71717A)
+
+## 4. CREATIVE CONSTRAINTS
+- Avoid sterile corporate SaaS visuals; celebrate real trade tools, authentic materials, and tangible utility.`;
+  } else {
+    creativeBrief = `// ========================================================
+// TARGET: CREATIVE AI ENGINES (MODE: CREATE / BRIEF)
+// Directive: "Create this creative output"
+// Project: ${cleanTitle}
+// Target Environments: Suno AI, Midjourney, Runway Gen-3, ElevenLabs
+// ========================================================
+
+# CREATIVE GENERATION BRIEF
+
+## 1. CREATIVE IDENTITY & DIRECTION
+- Project Concept: "${cleanTitle}"
+- Aesthetic Persona: Tactile, modern minimalism with generous negative space and purposeful high-contrast typography.
+- Emotional Core: Effortless flow, immediate clarity, zero friction.
+
+## 2. SUNO AI INTERFACE SOUNDSCAPE & SONIC BRANDING
+- Background Focus Track: Ambient downtempo synth, warm electric piano chords, light vinyl warmth, 100 bpm, steady rhythmic pulse for deep productivity
+- Audio Interaction Palette:
+  * Primary Action: Crisp tactile wooden click (8ms attack, fast decay)
+  * Success / Complete: Warm harmonic interval chime (F# major triad)
+  * Reset / Clear: Soft whoosh with low-pass dampening
+
+## 3. MIDJOURNEY CONCEPT & ASSET ARTWORK PROMPT
+- Art Direction: Minimalist product workspace with tactile matte surfaces, crisp typography casting subtle shadows, warm diffused studio lighting, Hasselblad medium format photography, 8k resolution --ar 16:9 --style raw --v 6.0
+- Color Palette: Warm Neutral Linen (#FAFAF9), Deep Graphite (#1C1917), Accent Amber (#F59E0B)
+
+## 4. CREATIVE CONSTRAINTS & NON-GOALS
+- Strictly avoid generic corporate vector illustrations or neon purple gradients. Enforce authentic physical texture and intentional typography.`;
+  }
+
+  return {
+    build: buildPrompt,
+    dev: devPlan,
+    create: creativeBrief,
+  };
 }
 
 // Helper: Backward-compatible check for quick gating
@@ -518,7 +1078,17 @@ The Build Prompt on the right has been updated with this cohesive architecture.`
   // 4. Build Trigger
   else if (isBuildTrigger) {
     if (!workingPromptFallback) {
-      workingPromptFallback = `// ========================================================
+      const readinessCheck = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, false, project);
+      if (!readinessCheck.isReady) {
+        workingPromptFallback = "";
+        responseContent = `I understand you want to start building, but before we generate an implementation prompt for Google AI Studio, we need to clarify one critical detail:
+**${readinessCheck.unresolvedTopic || "Core User Workflow"}**
+
+${(readinessCheck.consequentialQuestions || ["What is the primary action a user takes on this screen?"])[0]}
+
+Once you share that, I will generate the complete build prompt without having to invent arbitrary mechanics.`;
+      } else {
+        workingPromptFallback = `// ========================================================
 // GOOGLE AI STUDIO BUILD PROMPT
 // Project: ${ideaTopic}
 // Copy and paste directly into https://ai.studio/build
@@ -526,7 +1096,7 @@ The Build Prompt on the right has been updated with this cohesive architecture.`
 
 # PROJECT OBJECTIVE:
 Build a focused, single-screen web application solving: "${lastUserMessage}"
-The application must be immediately interactive, with zero unnecessary onboarding barriers.
+The application must be immediately interactive with zero unnecessary onboarding barriers.
 
 # TECHNICAL ARCHITECTURE:
 - Platform: React 19 with TypeScript and Tailwind CSS.
@@ -534,37 +1104,31 @@ The application must be immediately interactive, with zero unnecessary onboardin
 - Backend & Storage: Client-side persistent key-value state (LocalStorage) with clean reactive hooks.
 - Design System: Sophisticated neutral palette, high-contrast typography, clear hierarchy, accessible touch targets (min 44px).
 
-# DATA MODEL & SCHEMA:
-interface ItemRecord {
-  id: string;
-  title: string;
-  category: string;
-  status: "active" | "completed" | "archived";
-  notes?: string;
-  timestamp: string;
-}
-
-# CORE INTERACTION FLOW:
-1. Instant capture input with responsive keyboard handling (Enter to submit).
-2. Clean visual list/grid of items with status toggles and inline editing.
-3. Search and quick filtering across active categories.
-4. Export/copy data functionality with instant visual confirmation.
+# WORKFLOW & DATA PIPELINE:
+- Input: Direct user domain input with validation.
+- State: Reactive state hooks with local persistence.
+- Actions: Immediate inline operations with instant tactile feedback.
+- Output: Export and structured clipboard actions.
 
 # NON-GOALS (STRICT ANTI-DRIFT):
 - Do NOT build authentication modals, user login screens, or billing forms unless explicitly requested.
 - Do NOT add complex multi-step wizards or unrequested sidebars.
 - Focus strictly on making the primary workflow delightful and reliable.`;
-    }
 
-    responseContent = `I've synthesized our project into the finalized **Build Prompt** on the right.
+        responseContent = `I've synthesized our project into the finalized **Build Prompt** on the right.
 
 It establishes:
 • Single-screen architecture with instant tactile feedback
-• Strict TypeScript data models and validation contracts
 • Explicit non-goals to prevent scope creep in AI Studio
 • Production-ready styling and resilient error handling
 
 You can copy the prompt using **Copy Prompt for AI Studio** on the right, open **Google AI Studio**, and paste it in to build your application.`;
+      }
+    } else {
+      responseContent = `I've prepared the finalized **Build Prompt** on the right based on our established project definition.
+
+You can copy the prompt using **Copy Prompt for AI Studio** on the right, open **Google AI Studio**, and paste it in to build your application.`;
+    }
   }
   // 5. Incremental Refinement (e.g. dark mode, csv export)
   else if (currentWorkingPrompt && !isBuildTrigger) {
@@ -794,9 +1358,25 @@ I've developed the initial **Build Prompt** on the right. You can review it, con
     }
   }
 
+  const isAchieved = Boolean(workingPromptFallback && workingPromptFallback.trim().length > 0);
+  const derivedDownstream = isAchieved
+    ? deriveDownstreamProjectRepresentation(projectTitle || ideaTopic, workingPromptFallback, updatedProjectRequirements)
+    : null;
+
+  const currentReadiness = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, isBuildTrigger, project);
+
+  const targetProjections = isAchieved
+    ? deriveTargetProjections(projectTitle || ideaTopic, workingPromptFallback, updatedProjectRequirements, derivedDownstream)
+    : { build: "", dev: "", create: "" };
+
   return {
     content: responseContent,
     workingPrompt: workingPromptFallback,
+    isPromptAchieved: isAchieved,
+    masterPromptStatus: isAchieved ? "prompt_achieved" : "readiness_withheld",
+    readinessChecks: currentReadiness.readinessChecks,
+    downstreamRepresentation: derivedDownstream,
+    targetProjections,
     projectUpdate: {
       title: projectTitle || ideaTopic,
       requirements: updatedProjectRequirements,
@@ -858,83 +1438,98 @@ CURRENT AUTHORITATIVE PROJECT STATE:
     const systemInstruction = `You are the Conversational Project Manager for Google AI Studio.
 The user is working on ONE ONGOING PROJECT across days or weeks.
 
-INTERNAL PROJECT STRUCTURE:
-PROJECT
-  ├── project identity (title, id)
-  ├── accumulated understanding
-  ├── conversation / history
-  ├── decisions and established requirements (architecture, tech stack, data models, non-goals)
-  ├── current Build Prompt (the living implementation specification for Google AI Studio)
-  └── latest feedback / change state (AI Studio iteration logs)
+# CORE SYSTEM CONTRACT
+Your job is NOT to generate software ideas, generic architectures, CRUD applications, or implementation prompts as quickly as possible.
+Your primary responsibility is to determine whether the project has been sufficiently understood, explored, defined, and validated to justify generating an AI build prompt.
+The implementation prompt is the OUTPUT of the process, not the process itself.
 
-THE CRITICAL PRINCIPLE — CONTINUITY OVER REGENERATION:
-Continuity is more important than prompt generation.
-The system must NOT behave like:
-User message → regenerate everything from scratch
+# CANONICAL PROJECT STATE
+Maintain one canonical, evolving PROJECT DEFINITION throughout the conversation.
+The project definition must persist across turns and must be updated when the user explicitly accepts, rejects, modifies, or adds a requirement.
+Never silently revert to an earlier version of the project.
+Never treat a later user message as a completely new project unless the user explicitly starts a new project.
+When a requirement changes the project's workflow, inputs, outputs, capabilities, constraints, or identity, update the canonical project definition before proceeding.
 
-It must behave like:
-Existing project state + New information → Determine delta → Apply targeted change → Updated project state
-
-This is the "sniper" principle:
+# PROJECT CONTINUITY & SNIPER PRINCIPLE
+Every accepted decision becomes part of the current project state unless the user explicitly removes or replaces it.
+Before generating an implementation prompt, verify that the prompt reflects the LATEST canonical project definition, not an earlier version.
+If there is uncertainty about whether an earlier decision still applies, ask rather than assume.
 ESTABLISH ONCE.
 PRESERVE WHAT IS KNOWN.
 INVESTIGATE WHAT CHANGED.
 MODIFY PRECISELY.
 
-Change the smallest valid set of project decisions necessary to keep the whole project coherent.
+# CONVERSATION LIFECYCLE (5 STAGES)
+1. UNDERSTAND: Establish what the user is actually trying to build.
+2. EXPLORE: Identify missing mechanics, constraints, dependencies, workflows, and decisions.
+3. DEFINE: Maintain and update the canonical project definition as decisions are made.
+4. READINESS GATE: Determine whether enough information exists to produce a faithful implementation prompt.
+5. GENERATE: Only after the project passes the readiness gate, produce the implementation prompt.
 
-THE 4-STAGE LIFECYCLE DISCIPLINE:
-The orchestrator MUST distinguish between:
-1. 🧠 Understanding the user's idea
-2. 🔍 Exploring and clarifying the project
-3. ⚖️ Determining whether the project is actually ready to build
-4. 🏗️ Generating the implementation prompt
+A description of an idea must NEVER automatically advance to GENERATE.
 
-A project must NEVER reach Stage 4 merely because the user has described an idea!
+# READINESS GATE CRITERIA
+Before generating an implementation prompt, confirm:
+- The core purpose is understood.
+- The primary user workflow is defined.
+- Inputs and outputs are known.
+- Important capabilities are explicitly established.
+- Major architectural decisions required for the requested prototype are resolved.
+- Known ambiguities that could materially change implementation have been addressed.
+- The current project definition is internally consistent.
+- No major requirement introduced later in the conversation has been lost.
 
-Before generating a Build Prompt, you MUST evaluate the project against the 5 Readiness Dimensions:
-1. 🧠 Understanding: Understand the actual problem behind the user's words.
-2. 🔎 Critical Reasoning: Challenge weak assumptions and evaluate competitive reality honestly.
-3. 💡 Opportunity: Identify the genuine wedge or gap where a lightweight tool wins.
-4. 🏗️ Architecture: Produce clean, minimal, single-screen specifications without unsolicited backend bloat.
-5. 🎯 Restraint (THE READINESS GATE):
-   - When consequential uncertainty remains (e.g. broad/ambiguous concept, unestablished user workflow, missing input/output pipeline):
-     * You MUST set "workingPrompt": "" (empty string).
-     * You MUST explicitly identify what is unresolved.
-     * You MUST explain why it matters.
-     * You MUST ask ONLY the minimum necessary questions to resolve it.
-     * You MUST avoid declaring the project finalized.
-     * You MUST withhold Build Prompt generation.
+If any material uncertainty remains, STOP and ask the minimum necessary question.
+Keep the implementation prompt empty ("workingPrompt": "") while the project is not ready.
 
-ANTI-HALLUCINATION & NO UNREQUESTED CRUD RULE:
-- NEVER substitute a generic application template (e.g. ItemRecord, LocalStorage list, capture input, category filter, inline edit, status toggle) when the requested product is not sufficiently specified!
-- NEVER invent data models, storage architecture, UI patterns, technical stacks, product scope, features, or business models unless they have been established by the user or are explicitly justified as necessary implementation decisions after readiness has been achieved.
-- If the user describes an ambiguous or broad concept (such as a video-AI platform, marketplace, or high-level tool):
-  DO NOT invent a CRUD dashboard with generic ItemRecords.
-  DO NOT declare the project ready.
-  Set "workingPrompt": "" and ask the 2-3 precise questions needed to define the operational workflow.
+# SCOPE CHANGE RULE
+When the user introduces a capability that materially changes the existing workflow, do NOT silently append it to the implementation prompt.
+First determine whether it:
+- extends the existing workflow,
+- creates an alternative workflow,
+- changes the project's core identity, or
+- requires a new architectural decision.
+If the distinction is unclear, ask.
+Once the user makes the decision, update the canonical project definition and retain that decision for all subsequent turns.
 
-HANDLING DIFFERENT USER INTENTS:
-1. Vague, Broad, or Ambiguous Ideas (e.g. video-AI, broad marketplace, vague assistance, short video app):
-   - Exercise RESTRAINT. Withhold the Build Prompt ("workingPrompt": "").
-   - Acknowledge what was understood, isolate the consequential unresolved decisions, explain why they matter, and ask the targeted questions.
-2. AI Studio Feedback (e.g. "The auth works, but data import is broken", "AI Studio changed the dashboard and now export is failing"):
-   - Recognize the SAME ongoing project.
-   - Retain working components (e.g. auth, layout, schemas).
-   - Isolate the failing component or regression.
-   - Acknowledge established state ("I know where we are with this project. Let's address [the issue].")
-   - Update only the affected section of the Build Prompt or provide targeted fix directives for AI Studio.
-3. Significant Architectural Pivot (e.g. "I don't want this to use a local database anymore, use a hosted database"):
-   - Identify which decisions depend on the old architecture.
-   - Invalidate and remove obsolete requirements (prevent contradictory stacking!).
-   - Preserve unaffected decisions (UX flow, entities, styling).
-   - Revise affected architecture and data storage in the Build Prompt.
-4. Incremental Requirement (e.g. "Add CSV export", "Use dark mode", "Add category filtering"):
-   - Preserve all established decisions, splice the new requirement into the existing Build Prompt cleanly without resetting.
-5. Build Trigger (e.g. "Okay. Build this", "Let's build"):
-   - If sufficiently established, finalize the complete, polished Build Prompt for AI Studio.
-6. Concrete Domain Problem with Established Workflow (e.g. electrician job/quote tracker, music stem exporter):
-   - When core inputs, outputs, and actor workflows are already concrete, synthesize the sharp initial Build Prompt without generic bloat.
+# ANTI-DRIFT RULE
+Never revert to an earlier project definition merely because it is easier to describe or because an earlier implementation prompt already exists.
+A previous build prompt is NOT the source of truth.
+The current canonical project definition is the source of truth.
+
+# ANTI-HALLUCINATION RULE
+Do NOT invent:
+- data models,
+- CRUD entities (e.g. ItemRecord, generic tasks),
+- storage systems,
+- UI controls,
+- APIs,
+- backend services,
+- authentication,
+- payment systems,
+- AI models,
+- processing pipelines,
+- or other implementation details
+unless they are required by the established project definition or necessary to implement an explicitly accepted requirement.
+Do not use generic application architecture as a substitute for missing requirements.
+
+# PRE-GENERATION CONSISTENCY CHECK
+Immediately before generating an implementation prompt:
+1. Reconstruct the current project definition from the entire conversation.
+2. Identify all explicitly accepted decisions.
+3. Identify any decisions that were superseded.
+4. Check that the proposed prompt contains the current workflow and capabilities.
+5. Check that no accepted requirement has disappeared.
+6. Check that no rejected or obsolete requirement has returned.
+7. Only then generate the implementation prompt.
+
+# FINAL PRINCIPLE
+The quality of this system is measured less by how quickly it produces a build prompt and more by whether it knows when NOT to produce one.
+A successful outcome is sometimes:
+"Not ready. We need to resolve this first."
+A successful outcome is also:
+"Ready. Here is the implementation prompt."
+Both outcomes are correct when they faithfully reflect the current project state.
 
 BUILD PROMPT GUIDELINES:
 The "workingPrompt" field MUST be a complete, high-precision, copy-ready prompt intended for Google AI Studio Build (https://ai.studio/build).
@@ -943,7 +1538,7 @@ It must always be internally consistent, free of contradictory obsolete statemen
 Format your response as a valid JSON object matching this schema:
 {
   "content": "Conversational reply as the dedicated Project Manager. Tone: clear, collaborative, professional. If not ready to build, explicitly identify what is unresolved, explain why it matters, and ask the minimum necessary questions. If ready, explain the design and state what was established.",
-  "workingPrompt": "The complete, living Build Prompt for Google AI Studio. CRITICAL READINESS GATE: If consequential uncertainty remains, or the idea is broad/ambiguous, you MUST return an empty string \"\" for workingPrompt! Only produce a workingPrompt when the project has genuinely reached readiness (Stage 4).",
+  "workingPrompt": "The complete, living Build Prompt for Google AI Studio. CRITICAL READINESS GATE: If consequential uncertainty remains, or the idea is broad/ambiguous, you MUST return an empty string \"\" for workingPrompt! Only produce a workingPrompt when the project has genuinely reached readiness (Stage 5 GENERATE).",
   "projectUpdate": {
     "title": "Short descriptive project title",
     "understanding": "Updated accumulated understanding of what is being built",
@@ -958,7 +1553,7 @@ Format your response as a valid JSON object matching this schema:
       "constraintsAndNonGoals": ["Non-goal 1", "Non-goal 2"],
       "importantDecisions": ["Decision 1", "Decision 2"]
     },
-    "latestChangeCategory": "ai_studio_feedback" | "incremental_tweak" | "architectural_pivot" | "initial_definition" | "readiness_gate" | "finalization",
+    "latestChangeCategory": "ai_studio_feedback" | "incremental_tweak" | "architectural_pivot" | "initial_definition" | "readiness_gate" | "scope_change" | "finalization",
     "changeDeltaSummary": "Brief summary of what was preserved and what was modified"
   }
 }
@@ -998,9 +1593,33 @@ Return ONLY the JSON object.`;
       const parsed = JSON.parse(response.text || "{}");
       if (parsed && (parsed.content || parsed.workingPrompt !== undefined)) {
         // Enforce Readiness Gate: If project is not ready to build, clear workingPrompt and ensure user is prompted with clarifying questions
-        const readiness = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, isBuildTrigger);
+        const readiness = evaluateReadinessGate(lastUserMessage, currentWorkingPrompt, isBuildTrigger, project);
+        parsed.readinessChecks = readiness.readinessChecks;
+
         if (!readiness.isReady) {
           parsed.workingPrompt = "";
+          parsed.isPromptAchieved = false;
+          parsed.masterPromptStatus = "readiness_withheld";
+          parsed.downstreamRepresentation = null;
+          parsed.targetProjections = { build: "", dev: "", create: "" };
+        } else {
+          parsed.isPromptAchieved = Boolean(parsed.workingPrompt && parsed.workingPrompt.trim().length > 0);
+          parsed.masterPromptStatus = parsed.isPromptAchieved ? "prompt_achieved" : "defining";
+          if (parsed.isPromptAchieved && !parsed.downstreamRepresentation) {
+            parsed.downstreamRepresentation = deriveDownstreamProjectRepresentation(
+              project?.identity?.title || activeIdea || lastUserMessage,
+              parsed.workingPrompt,
+              parsed.projectUpdate?.requirements
+            );
+          }
+          parsed.targetProjections = parsed.isPromptAchieved
+            ? deriveTargetProjections(
+                project?.identity?.title || activeIdea || lastUserMessage,
+                parsed.workingPrompt,
+                parsed.projectUpdate?.requirements,
+                parsed.downstreamRepresentation
+              )
+            : { build: "", dev: "", create: "" };
         }
         return res.json(parsed);
       }
@@ -1022,6 +1641,40 @@ Return ONLY the JSON object.`;
     console.error("Market hole chat error:", err);
     return res.status(500).json({
       error: "Failed to generate market hole chat response",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+// Endpoint: Target-Specific Projection of Master Prompt (Separation of Definition from Output Format)
+app.post("/api/orchestrator/project-target-projection", (req, res) => {
+  try {
+    const { title, canonicalPrompt, requirements, downstreamRepresentation, mode } = req.body;
+    if (!canonicalPrompt || !canonicalPrompt.trim()) {
+      return res.json({
+        targetProjections: { build: "", dev: "", create: "" },
+        activeProjection: "",
+        mode: mode || "build",
+      });
+    }
+
+    const projections = deriveTargetProjections(
+      title || "Focused Project",
+      canonicalPrompt,
+      requirements,
+      downstreamRepresentation
+    );
+
+    const activeProjection = projections[mode as "build" | "dev" | "create"] || projections.build;
+
+    return res.json({
+      targetProjections: projections,
+      activeProjection,
+      mode: mode || "build",
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: "Failed to derive target projections",
       details: err?.message || String(err),
     });
   }

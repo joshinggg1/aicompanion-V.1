@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import { ConversationPane } from "./ConversationPane";
 import { PromptBuildPane } from "./PromptBuildPane";
-import { ChatMessage, ProjectState } from "../types";
+import { ChatMessage, ProjectState, TargetOutputMode } from "../types";
+import { deriveTargetProjections } from "../utils/targetProjections";
 
 interface StudioWorkspaceProps {
   hasApiKey: boolean;
@@ -43,6 +44,14 @@ const createDefaultProject = (): ProjectState => ({
     importantDecisions: [],
   },
   buildPrompt: "",
+  isPromptAchieved: false,
+  masterPromptStatus: "discovering",
+  activeTargetMode: "build",
+  targetProjections: {
+    build: "",
+    dev: "",
+    create: "",
+  },
   feedbackHistory: [],
 });
 
@@ -126,6 +135,7 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
           messages: newHistory,
           activeIdea: project.identity.title || text,
           currentWorkingPrompt: project.buildPrompt,
+          activeTargetMode: project.activeTargetMode || "build",
           project: {
             ...project,
             messages: newHistory,
@@ -165,6 +175,14 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
           });
         }
 
+        const nextDownstream = data.downstreamRepresentation !== undefined ? data.downstreamRepresentation : prev.downstreamRepresentation;
+        const nextProjections = data.targetProjections || deriveTargetProjections(
+          nextTitle,
+          nextPrompt,
+          data.projectUpdate?.requirements || prev.requirements,
+          nextDownstream
+        );
+
         return {
           ...prev,
           identity: {
@@ -177,6 +195,11 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
           requirements: data.projectUpdate?.requirements || prev.requirements,
           messages: [...newHistory, assistantMsg],
           buildPrompt: nextPrompt,
+          isPromptAchieved: data.isPromptAchieved !== undefined ? data.isPromptAchieved : Boolean(nextPrompt.trim()),
+          masterPromptStatus: data.masterPromptStatus || (nextPrompt.trim() ? "prompt_achieved" : "readiness_withheld"),
+          readinessChecks: data.readinessChecks || prev.readinessChecks,
+          downstreamRepresentation: nextDownstream,
+          targetProjections: nextProjections,
           feedbackHistory: newFeedbackHistory,
         };
       });
@@ -212,10 +235,38 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
   };
 
   const handlePromptChange = (newPrompt: string) => {
+    setProject((prev) => {
+      const currentProjections = prev.targetProjections || { build: newPrompt, dev: "", create: "" };
+      return {
+        ...prev,
+        buildPrompt: newPrompt,
+        targetProjections: {
+          ...currentProjections,
+          build: newPrompt,
+        },
+      };
+    });
+  };
+
+  const handleSelectTargetMode = (mode: TargetOutputMode) => {
     setProject((prev) => ({
       ...prev,
-      buildPrompt: newPrompt,
+      activeTargetMode: mode,
     }));
+  };
+
+  const handleUpdateProjection = (mode: TargetOutputMode, text: string) => {
+    setProject((prev) => {
+      const currentProjections = prev.targetProjections || { build: prev.buildPrompt, dev: "", create: "" };
+      return {
+        ...prev,
+        targetProjections: {
+          ...currentProjections,
+          [mode]: text,
+        },
+        ...(mode === "build" ? { buildPrompt: text } : {}),
+      };
+    });
   };
 
   return (
@@ -299,6 +350,16 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
               workingPrompt={project.buildPrompt}
               setWorkingPrompt={handlePromptChange}
               selectedModel={selectedModel}
+              isPromptAchieved={project.isPromptAchieved}
+              masterPromptStatus={project.masterPromptStatus}
+              readinessChecks={project.readinessChecks}
+              downstreamRepresentation={project.downstreamRepresentation}
+              activeTargetMode={project.activeTargetMode || "build"}
+              targetProjections={project.targetProjections}
+              onSelectTargetMode={handleSelectTargetMode}
+              onUpdateProjection={handleUpdateProjection}
+              projectTitle={project.identity.title}
+              projectRequirements={project.requirements}
             />
           </section>
         </div>

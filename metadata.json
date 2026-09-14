@@ -1,6 +1,6 @@
 {
   "name": "AI Project Production Orchestrator",
-  "description": "A conversational project manager that helps a user turn an idea into a finished build prompt for Google AI Studio.",
+  "description": "Conversational living master prompt system for Google AI Studio projects that maintains continuous project understanding and derives downstream project representations.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
