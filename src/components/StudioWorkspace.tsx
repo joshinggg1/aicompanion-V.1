@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { 
   RotateCcw, 
-  ExternalLink
+  ExternalLink,
+  AlertTriangle,
+  X,
+  Check
 } from "lucide-react";
 import { ConversationPane } from "./ConversationPane";
 import { PromptBuildPane } from "./PromptBuildPane";
@@ -85,6 +88,8 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
   const [inputPrompt, setInputPrompt] = useState<string>("");
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.1-flash-lite");
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Keep project synchronized to localStorage across sessions
   useEffect(() => {
@@ -222,16 +227,31 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
     }
   };
 
-  const handleResetSession = () => {
-    if (project.messages.length > 2 || project.buildPrompt.trim()) {
-      const confirmReset = window.confirm(
-        "Start a new project? Your current project continuity will be cleared from this workspace."
-      );
-      if (!confirmReset) return;
+  // Trigger reset with confirmation check
+  const promptResetSession = () => {
+    // If the project has user messages or existing build prompt/title, confirm before clearing
+    const hasWork = project.messages.length > 1 || project.buildPrompt.trim().length > 0 || Boolean(project.identity.title.trim());
+    if (hasWork) {
+      setShowResetModal(true);
+    } else {
+      executeReset();
     }
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  };
+
+  // Perform full authoritative workspace reset
+  const executeReset = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch (e) {
+      console.error("Storage clear failed", e);
+    }
     setProject(createDefaultProject());
+    setInputPrompt("");
+    setIsThinking(false);
+    setShowResetModal(false);
+    setToastMessage("Workspace and project reset to a clean state.");
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handlePromptChange = (newPrompt: string) => {
@@ -270,7 +290,7 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
   };
 
   return (
-    <div className="h-screen bg-stone-100 text-stone-900 flex flex-col antialiased overflow-hidden">
+    <div className="h-screen bg-stone-100 text-stone-900 flex flex-col antialiased overflow-hidden relative">
       {/* Top Header */}
       <header className="bg-stone-900 text-stone-100 border-b border-stone-800 px-4 sm:px-6 py-2.5 shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
@@ -301,7 +321,7 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {/* Direct Link to Google AI Studio */}
             <a
               href="https://ai.studio/build"
@@ -313,14 +333,16 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
               <ExternalLink className="w-3.5 h-3.5 text-stone-400" />
             </a>
 
-            {/* Reset / New Session */}
+            {/* Reset Workspace & Project */}
             <button
-              onClick={handleResetSession}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-stone-300 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors border border-stone-700 font-mono"
+              id="btn-topbar-reset"
+              type="button"
+              onClick={promptResetSession}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-stone-200 hover:text-white bg-stone-800 hover:bg-stone-700 active:bg-stone-900 rounded-lg transition-colors border border-stone-700 font-medium shadow-2xs"
               title="Reset conversation and start a new project"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Project</span>
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Reset</span>
             </button>
           </div>
         </div>
@@ -340,6 +362,7 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
               onTriggerBuild={() => {
                 handleSendMessage("Okay. Build this");
               }}
+              onReset={promptResetSession}
               hasWorkingPrompt={Boolean(project.buildPrompt.trim())}
             />
           </section>
@@ -364,6 +387,86 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
           </section>
         </div>
       </main>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 bg-stone-900 text-stone-100 border border-stone-700 px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2.5 text-xs font-sans animate-fade-in">
+          <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <Check className="w-3 h-3" />
+          </div>
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-stone-400 hover:text-stone-200 ml-2"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Custom Reset Confirmation Modal (In-App, Sandbox/iFrame Safe) */}
+      {showResetModal && (
+        <div 
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-modal-title"
+          className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div className="bg-white rounded-xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 font-sans text-stone-900 animate-scale-in">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 id="reset-modal-title" className="text-sm font-bold text-stone-900 tracking-tight">
+                  Reset Project & Workspace?
+                </h3>
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  This action will clear all current conversation history, canonical requirements, and active projections for:
+                </p>
+                {project.identity.title ? (
+                  <div className="p-2 bg-stone-100 rounded-md text-xs font-mono font-semibold text-stone-800 border border-stone-200 truncate">
+                    {project.identity.title}
+                  </div>
+                ) : (
+                  <div className="p-2 bg-stone-100 rounded-md text-xs font-mono text-stone-600 border border-stone-200">
+                    Current active session
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 text-[11px] text-stone-600 space-y-1.5 font-sans">
+              <div className="font-semibold text-stone-800">What will happen:</div>
+              <ul className="list-disc list-inside space-y-0.5 pl-1 text-stone-600">
+                <li>Conversation restarts with the initial prompt coach greeting</li>
+                <li>Living master prompt & target projections (BUILD, DEV, CREATE) reset</li>
+                <li>Readiness gate is re-engaged for your next idea</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                id="btn-cancel-reset"
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                className="px-3.5 py-2 text-xs font-medium text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="btn-confirm-reset"
+                type="button"
+                onClick={executeReset}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg transition-colors shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Confirm Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

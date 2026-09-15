@@ -318,6 +318,22 @@ export interface CanonicalProjectDefinition {
 
 export type TargetOutputMode = "build" | "dev" | "create";
 
+export type ReadinessStatus = "ready" | "pending" | "blocked";
+
+export interface RepositoryModule {
+  id: string;
+  path: string;           // e.g., "src/core/state-engine.ts"
+  status: ReadinessStatus;
+  description: string;    // Brief note on what needs doing
+}
+
+export interface DevPanelState {
+  targetRepoUrl: string;
+  instructions: string;
+  modules: RepositoryModule[];
+  rawFileTree: string;
+}
+
 export interface TargetModeMeta {
   id: TargetOutputMode;
   name: string;
@@ -348,6 +364,7 @@ export interface ProjectState {
   masterPromptStatus: "discovering" | "defining" | "readiness_withheld" | "prompt_achieved" | "refining_change";
   readinessChecks?: ReadinessDimensionCheck[];
   downstreamRepresentation?: DownstreamProjectRepresentation;
+  devPanelState?: DevPanelState;
   feedbackHistory: FeedbackIteration[];
 }
 

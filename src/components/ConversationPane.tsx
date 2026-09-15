@@ -3,7 +3,8 @@ import {
   Sparkles, 
   Send, 
   Lightbulb, 
-  Hammer 
+  Hammer,
+  RotateCcw
 } from "lucide-react";
 import { ChatMessage } from "../types";
 
@@ -14,6 +15,7 @@ interface ConversationPaneProps {
   onSendMessage: (text?: string) => void;
   isThinking: boolean;
   onTriggerBuild: () => void;
+  onReset?: () => void;
   hasWorkingPrompt?: boolean;
 }
 
@@ -24,6 +26,7 @@ export const ConversationPane: React.FC<ConversationPaneProps> = ({
   onSendMessage,
   isThinking,
   onTriggerBuild,
+  onReset,
   hasWorkingPrompt = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -49,24 +52,41 @@ export const ConversationPane: React.FC<ConversationPaneProps> = ({
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-stone-200 shadow-xs overflow-hidden">
       {/* Pane Header */}
-      <div className="px-4 py-3 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-800">
+      <div className="px-4 py-3 bg-stone-50 border-b border-stone-200 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-800 shrink-0">
             Conversation
           </span>
-          <span className="text-[11px] text-stone-600 hidden sm:inline">
-            — Understand the problem, investigate what exists, and develop the build prompt
+          <span className="text-[11px] text-stone-600 hidden sm:inline truncate">
+            — Understand problem & develop master prompt
           </span>
         </div>
-        <button
-          onClick={onTriggerBuild}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-amber-300 rounded-md shadow-2xs transition-colors"
-          title="Agree on what should be built and generate the build prompt for AI Studio"
-        >
-          <Hammer className="w-3.5 h-3.5 text-amber-400" />
-          <span>"Okay. Build this"</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {onReset && (
+            <button
+              id="btn-pane-reset"
+              type="button"
+              onClick={onReset}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 active:bg-stone-200 border border-stone-200 rounded-md transition-colors shadow-2xs"
+              title="Reset conversation and project state"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-stone-500" />
+              <span>Reset</span>
+            </button>
+          )}
+          <button
+            id="btn-trigger-build"
+            type="button"
+            onClick={onTriggerBuild}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-amber-300 rounded-md shadow-2xs transition-colors"
+            title="Agree on what should be built and generate the build prompt for AI Studio"
+          >
+            <Hammer className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden xs:inline">"Okay. Build this"</span>
+            <span className="xs:hidden">Build</span>
+          </button>
+        </div>
       </div>
 
       {/* Messages Thread */}
