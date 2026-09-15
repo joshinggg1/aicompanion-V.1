@@ -35,6 +35,10 @@ export const ConversationPane: React.FC<ConversationPaneProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
+  // Context-aware suggestions appear only after the user starts the conversation
+  const userMessages = messages.filter((m) => m.role === "user");
+  const hasUserSpoken = userMessages.length > 0;
+
   const quickTriggers = hasWorkingPrompt
     ? [
         "The auth works, but data import is broken",
@@ -42,12 +46,14 @@ export const ConversationPane: React.FC<ConversationPaneProps> = ({
         "I want this workflow to work differently",
         "Okay. Build this",
       ]
-    : [
-        "I've got this idea...",
+    : hasUserSpoken
+    ? [
         "What existing products do this?",
         "Where is the hole in the market?",
+        "Clarify inputs & outputs",
         "Okay. Build this",
-      ];
+      ]
+    : [];
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-stone-200 shadow-xs overflow-hidden">
@@ -153,29 +159,31 @@ export const ConversationPane: React.FC<ConversationPaneProps> = ({
 
       {/* Input / Quick Triggers Footer */}
       <div className="p-3 bg-stone-50/80 border-t border-stone-200 space-y-2">
-        {/* Quick Trigger Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          <span className="text-[10px] font-mono text-stone-600 uppercase tracking-wider shrink-0 flex items-center gap-1">
-            <Lightbulb className="w-3 h-3 text-amber-600" />
-            Try:
-          </span>
-          {quickTriggers.map((qt, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                if (qt === "Okay. Build this" || qt === "Okay. This is what we're building.") {
-                  onTriggerBuild();
-                } else {
-                  onSendMessage(qt);
-                }
-              }}
-              disabled={isThinking}
-              className="text-[11px] bg-white hover:bg-stone-100 text-stone-800 border border-stone-200 rounded-md px-2 py-0.5 whitespace-nowrap transition-colors shadow-2xs"
-            >
-              {qt}
-            </button>
-          ))}
-        </div>
+        {/* Quick Trigger Chips (only after user has started conversation) */}
+        {quickTriggers.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            <span className="text-[10px] font-mono text-stone-600 uppercase tracking-wider shrink-0 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3 text-amber-600" />
+              Try:
+            </span>
+            {quickTriggers.map((qt, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (qt === "Okay. Build this" || qt === "Okay. This is what we're building.") {
+                    onTriggerBuild();
+                  } else {
+                    onSendMessage(qt);
+                  }
+                }}
+                disabled={isThinking}
+                className="text-[11px] bg-white hover:bg-stone-100 text-stone-800 border border-stone-200 rounded-md px-2 py-0.5 whitespace-nowrap transition-colors shadow-2xs cursor-pointer"
+              >
+                {qt}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Textarea & Send Button */}
         <form

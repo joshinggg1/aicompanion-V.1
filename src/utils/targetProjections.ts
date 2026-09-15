@@ -1,4 +1,12 @@
-import { TargetModeMeta, TargetOutputMode, TargetProjections, DownstreamProjectRepresentation } from "../types";
+import { 
+  TargetModeMeta, 
+  TargetOutputMode, 
+  TargetProjections, 
+  DownstreamProjectRepresentation, 
+  DevPanelState, 
+  RepositoryModule,
+  ReadinessDimensionCheck
+} from "../types";
 
 export const TARGET_MODES: TargetModeMeta[] = [
   {
@@ -286,3 +294,115 @@ ${s.verificationCriteria.map((c: any) => `  * [ ] ${c}`).join("\n")}`).join("\n\
     create: creativeBrief,
   };
 }
+
+export function deriveDevPanelState(
+  title: string,
+  canonicalPrompt: string,
+  downstreamRep?: DownstreamProjectRepresentation | null,
+  readinessChecks?: ReadinessDimensionCheck[]
+): DevPanelState {
+  const cleanTitle = title || "Focused Project";
+  const repoSlug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const hasPrompt = Boolean(canonicalPrompt && canonicalPrompt.trim().length > 0);
+
+  // If prompt is withheld or project is incomplete, DEV projection strictly reflects incompleteness
+  if (!hasPrompt) {
+    const unresolvedGates = (readinessChecks || []).filter((c) => c.status !== "met");
+    const unresolvedNames = unresolvedGates.map((g) => g.label).join(", ") || "Project workflows, capabilities, and architecture";
+
+    return {
+      targetRepoUrl: `https://github.com/organization/${repoSlug || "pending-workspace"}`,
+      instructions: `// SPECIFICATION WITHHELD BY 8-DIMENSION READINESS GATE
+The canonical project definition for "${cleanTitle}" is currently incomplete or unresolved.
+Implementation instructions are withheld until all readiness dimensions pass.
+
+Unresolved Dimensions:
+${unresolvedGates.length > 0 ? unresolvedGates.map((g) => `- [ ] ${g.label}: ${g.details || "Pending clarification in conversation"}`).join("\n") : "- [ ] Core specifications and architectural decisions pending definition."}
+
+Directive for Developer/Agent:
+Continue the conversation to resolve: ${unresolvedNames}.`,
+      modules: [
+        {
+          id: "mod-1",
+          path: "src/types.ts",
+          status: "pending",
+          description: "Specification pending: Domain models and state interfaces await resolved requirements.",
+        },
+        {
+          id: "mod-2",
+          path: "src/components/PrimaryWorkspace.tsx",
+          status: "blocked",
+          description: "Blocked: Primary user workflow and interaction loop not yet established.",
+        },
+        {
+          id: "mod-3",
+          path: "src/utils/storage.ts",
+          status: "pending",
+          description: "Specification pending: Storage strategy and persistence requirements undefined.",
+        },
+      ],
+      rawFileTree: `└── [Proposed File Tree Withheld: Project definition incomplete (${unresolvedGates.length} gates pending)]`,
+    };
+  }
+
+  const repoTree = downstreamRep?.repositoryStructure?.treeText || `├── src/
+│   ├── components/
+│   │   ├── PrimaryWorkspace.tsx
+│   │   ├── ActionControlBar.tsx
+│   │   └── SummaryDisplay.tsx
+│   ├── types.ts
+│   ├── utils/
+│   │   └── storage.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── package.json
+└── README.md`;
+
+  const rawFiles = downstreamRep?.repositoryStructure?.files || [
+    { path: "src/types.ts", purpose: "Strict TypeScript domain models and state interfaces." },
+    { path: "src/components/PrimaryWorkspace.tsx", purpose: "Core single-screen view hosting the primary user action loop." },
+    { path: "src/components/ActionControlBar.tsx", purpose: "Tactile action controls, filters, and state toggles." },
+    { path: "src/components/SummaryDisplay.tsx", purpose: "Visual presentation of active records and metrics." },
+    { path: "src/utils/storage.ts", purpose: "Persistence and serialization utilities using LocalStorage." },
+  ];
+
+  const modules: RepositoryModule[] = rawFiles.map((file: any, index: number) => {
+    let status: "ready" | "pending" | "blocked" = "ready";
+    const pathLower = file.path.toLowerCase();
+    
+    if (pathLower.includes("storage") || pathLower.includes("database") || pathLower.includes("api")) {
+      status = "ready";
+    } else if (pathLower.includes("action") || pathLower.includes("control")) {
+      status = "ready";
+    } else if (pathLower.includes("types")) {
+      status = "ready";
+    } else if (index === rawFiles.length - 1 && rawFiles.length > 4) {
+      status = "pending";
+    }
+
+    return {
+      id: `mod-${index + 1}`,
+      path: file.path,
+      status,
+      description: file.purpose || "Core application component with responsive state.",
+    };
+  });
+
+  const instructions = `Architectural Implementation Plan for ${cleanTitle}
+- Stack: React 19, TypeScript strict mode, Tailwind CSS utility classes.
+- Pattern: Single-screen low-latency workspace with real local key-value state persistence.
+- Anti-drift rules: Zero generic ItemRecord CRUD stubs, zero unrequested login walls, minimum 44px touch targets.
+- Order of execution:
+  1. Define domain models in src/types.ts
+  2. Implement local state synchronization in src/utils/storage.ts
+  3. Build tactile interaction controls in src/components/
+  4. Verify no compilation errors or broken event handlers.`;
+
+  return {
+    targetRepoUrl: `https://github.com/organization/${repoSlug || "app-workspace"}`,
+    instructions,
+    modules,
+    rawFileTree: repoTree,
+  };
+}
+

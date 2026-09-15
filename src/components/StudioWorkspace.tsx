@@ -7,7 +7,7 @@ import {
   Check
 } from "lucide-react";
 import { ConversationPane } from "./ConversationPane";
-import { PromptBuildPane } from "./PromptBuildPane";
+import { ProjectStatusPane } from "./ProjectStatusPane";
 import { ChatMessage, ProjectState, TargetOutputMode } from "../types";
 import { deriveTargetProjections } from "../utils/targetProjections";
 
@@ -367,22 +367,15 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({ hasApiKey }) =
             />
           </section>
 
-          {/* RIGHT: BUILD PROMPT (THE PRODUCT OUTPUT) */}
-          <section className="h-full min-h-0 flex flex-col" aria-label="Build Prompt">
-            <PromptBuildPane
-              workingPrompt={project.buildPrompt}
-              setWorkingPrompt={handlePromptChange}
-              selectedModel={selectedModel}
-              isPromptAchieved={project.isPromptAchieved}
-              masterPromptStatus={project.masterPromptStatus}
-              readinessChecks={project.readinessChecks}
-              downstreamRepresentation={project.downstreamRepresentation}
-              activeTargetMode={project.activeTargetMode || "build"}
-              targetProjections={project.targetProjections}
+          {/* RIGHT: PROJECT STATUS & DISCOVERED INTELLIGENCE */}
+          <section className="h-full min-h-0 flex flex-col" aria-label="Project Status">
+            <ProjectStatusPane
+              project={project}
               onSelectTargetMode={handleSelectTargetMode}
-              onUpdateProjection={handleUpdateProjection}
-              projectTitle={project.identity.title}
-              projectRequirements={project.requirements}
+              onTriggerBuild={() => {
+                handleSendMessage("Okay. Build this");
+              }}
+              onUpdatePrompt={handlePromptChange}
             />
           </section>
         </div>

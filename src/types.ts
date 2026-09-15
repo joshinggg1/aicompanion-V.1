@@ -249,6 +249,50 @@ export interface FeedbackIteration {
   targetedChanges: string[];
 }
 
+export interface ResearchFinding {
+  id: string;
+  source: string;
+  whatWasFound: string;
+  whyItMatters: string;
+  potentialImplication: string;
+}
+
+export interface MarketDiscovery {
+  existingSolutionsCount: number;
+  competingApproachesCount: number;
+  gapIdentified: string;
+  existingSolutionsSummary?: string;
+  observedGap?: string;
+  differentiationOpportunity?: string;
+  findings: ResearchFinding[];
+}
+
+export interface TechnicalDiscovery {
+  relevantTechnology: string;
+  constraints: string[];
+  recommendedStack: string[];
+}
+
+export interface WorkflowDiscovery {
+  observedPattern: string;
+  currentFriction: string;
+  proposedWedge: string;
+}
+
+export interface ProjectDiscoveries {
+  market: MarketDiscovery;
+  technical: TechnicalDiscovery;
+  workflow: WorkflowDiscovery;
+  discoveredItems: { label: string; done: boolean }[];
+  openDecisionsCount: number;
+}
+
+export interface WorkflowStageItem {
+  id: string;
+  label: string;
+  status: "completed" | "active" | "pending";
+}
+
 export interface ReadinessDimensionCheck {
   id: string;
   label: string;
@@ -363,6 +407,7 @@ export interface ProjectState {
   isPromptAchieved: boolean;
   masterPromptStatus: "discovering" | "defining" | "readiness_withheld" | "prompt_achieved" | "refining_change";
   readinessChecks?: ReadinessDimensionCheck[];
+  discoveries?: ProjectDiscoveries;
   downstreamRepresentation?: DownstreamProjectRepresentation;
   devPanelState?: DevPanelState;
   feedbackHistory: FeedbackIteration[];
